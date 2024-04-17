@@ -28,7 +28,7 @@ To adjust the ISP multiplier:
 If you encounter any issues or have suggestions for improvements, please feel free to open an issue on the GitHub repository https://github.com/Tempus-superest/EasyISP
 
 ## License
-
+This project is released into the public domain under The Unlicense, which means you can use, modify, and distribute it without any restrictions. More details can be found in the LICENSE file.
 
 ## Acknowledgments
 - Special thanks to the Kerbal Space Program community for their valuable feedback and support.
