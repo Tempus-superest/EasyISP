@@ -1,6 +1,6 @@
 {
     "NAME": "EasyISP",
-    "URL": "https://github.com/Tempus-superest/EasyISP",
+    "URL": "https://raw.githubusercontent.com/Tempus-superest/EasyISP/main/EasyISP.version",
     "DOWNLOAD": "https://github.com/Tempus-superest/EasyISP/releases/tag/1.0.0",
     "VERSION": {
         "MAJOR": 1,
