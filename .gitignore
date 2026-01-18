@@ -1,0 +1,43 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnail cache
+._*
+.Spotlight-V100
+.Trashes
+
+# Logs and runtime files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+pnpm-debug.log*
+
+# Dependency directories
+node_modules/
+/.pnp/
+.pnp.js
+
+# Build outputs and temp folders
+dist/
+build/
+tmp/
+temp/
+.cache/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE/editor settings
+.vscode/
+*.code-workspace
