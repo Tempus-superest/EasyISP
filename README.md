@@ -4,7 +4,7 @@ Current Version - [v1.1.0](https://github.com/Tempus-superest/EasyISP/releases)
 
 **EasyISP** is a **KSP** add-on that increases engine efficiency so your rockets can go farther on the same amount of fuel. In **KSP**, higher **ISP** means you get more delta-v from a single tank. **EasyISP** applies **ModuleManager** patches that edit the **atmosphereCurve** on each targeted **Engine module** (including **ModuleEngines** and **ModuleEnginesFX**), creating a predictable global shift in **Sea-level Isp** and **Vacuum Isp** while keeping each engine’s curve shape and relative behavior intact. The default **ISP** multiplier applied by **EasyISP** is `2`.
 
-Tune **ISP** down for a tougher career, up for a more relaxed game, or push into near-future performance and simulate fictional setting like *The Expanse*.
+Tune **ISP** down for a tougher career, up for a more relaxed game, or push into near-future performance and simulate fictional settings like *The Expanse*.
 
 ## Features
 
