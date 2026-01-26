@@ -36,7 +36,7 @@ All required files MUST be updated on every version change. The version MUST mat
 
 #### File list
 
-Files required to be udpated when updating version
+Files required to be updated when updating version
 
 - `EasyISP.version` — Update: `VERSION` (MAJOR/MINOR/PATCH) to `X.Y.Z`.
 - `EasyISP.version` — Update: `DOWNLOAD` to `https://github.com/Tempus-superest/EasyISP/releases/tag/vX.Y.Z`.
