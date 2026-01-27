@@ -6,12 +6,15 @@ Current Version - [v1.1.0](https://github.com/Tempus-superest/EasyISP/releases)
 
 Tune **ISP** down for a tougher career, up for a more relaxed game, or push into near-future performance and simulate fictional settings like *The Expanse*.
 
+**EasyISP** is designed as a global multiplier that scales the final ISP values produced by your full mod stack.
+
 ## Features
 
 - Applies a global **ISP** adjustment across engine **atmosphereCurve** data.
 - Modifies each targeted **Engine module** (covers **ModuleEngines** and **ModuleEnginesFX**) via **ModuleManager**.
 - Scales all engines **ISP** uniformly while preserving their relative performance profile.
 - No in-game UI required; effects apply automatically on game load.
+- Uses ModuleManager `:FINAL` pass so the multiplier is applied last after other mods.
 
 ## Installation
 
