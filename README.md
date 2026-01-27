@@ -1,34 +1,53 @@
-# EasyISP Mod for Kerbal Space Program
+# EasyISP - A Mod for Kerbal Space Program
 
-## Introduction
-EasyISP is a simple mod designed to increase the Specific Impulse (ISP) of all engines in Kerbal Space Program. This enhancement leads to greater fuel efficiency, allowing for longer missions or more aggressive maneuvers with the same amount of fuel. Create a near (or far) future space program with advanced capabilities. Create an "Expanse" like series of ships.
+Current Version - [v1.1.0](https://github.com/Tempus-superest/EasyISP/releases)
+
+**EasyISP** is a **KSP** add-on that increases engine efficiency so your rockets can go farther on the same amount of fuel. In **KSP**, higher **ISP** means you get more delta-v from a single tank. **EasyISP** applies **ModuleManager** patches that edit the **atmosphereCurve** on each targeted **Engine module** (including **ModuleEngines** and **ModuleEnginesFX**), applying a predictable global **ISP** multiplier while keeping each engine’s curve shape and relative behavior intact. The default **ISP** multiplier applied by **EasyISP** is `2`.
+
+Tune **ISP** down for a tougher career, up for a more relaxed game, or push into near-future performance and simulate fictional settings like *The Expanse*.
+
+**EasyISP** is designed as a global multiplier that scales the final ISP values produced by your full mod stack.
 
 ## Features
-- Increases engine efficiency dramatically.
-- Simple to install and use.
-- Compatible with all versions of Kerbal Space Program.
+
+- Applies a global **ISP** adjustment across engine **atmosphereCurve** data.
+- Modifies each targeted **Engine module** (covers **ModuleEngines** and **ModuleEnginesFX**) via **ModuleManager**.
+- Scales all engines **ISP** uniformly while preserving their relative performance profile.
+- No in-game UI required; effects apply automatically on game load.
+- Uses ModuleManager `:FINAL` pass so the multiplier is applied last after other mods.
 
 ## Installation
-1. Download the latest release of EasyISP.
-2. Extract the downloaded file.
-3. Move the `EasyISP` folder into the `GameData` directory of your Kerbal Space Program installation.
-4. Start Kerbal Space Program and enjoy your enhanced engines!
 
-## How to Use
-Once installed, EasyISP automatically applies the ISP multiplier to all engine modules. There are no additional steps or configurations needed to start benefiting from increased engine efficiency.
+[CKAN](https://github.com/KSP-CKAN/CKAN) installation is preferred.
 
-## Customizing
-To adjust the ISP multiplier:
-1. Navigate to the `GameData/EasyISP` directory.
-2. Open the `configuration.cfg` file with a text editor.
-3. Find the line `@k0 *= 5` and `@k1 *= 5` and change the number `5` to your desired multiplier.
-4. Save the changes and restart Kerbal Space Program.
+### Manual installation
+
+- Download the [latest release](https://github.com/Tempus-superest/EasyISP/releases) of **EasyISP**.
+- Extract the downloaded archive.
+- Copy the `EasyISP` folder into your **KSP** `GameData` directory.
+- Launch **KSP**.
+
+## Instructions
+
+After installation, **EasyISP** applies its **ModuleManager** patches automatically during game load. No additional setup is required for the default behavior; the default **ISP** multiplier is `2`.
+
+## Customize **ISP** away from the default value
+
+You can adjust the global **ISP** multiplier to tune overall engine efficiency.
+
+- Open `GameData/EasyISP/EasyISP.cfg`.
+- Find the `EASYISP_SETTINGS` block.
+- Set `ispMultiplier` to scale **ISP** for all targeted engines.
+- Save the file and restart **KSP**.
 
 ## Support
-If you encounter any issues or have suggestions for improvements, please feel free to open an issue on the GitHub repository https://github.com/Tempus-superest/EasyISP
+
+If you encounter any issues or have suggestions for improvements, please feel free to open an issue on the [GitHub repository](https://github.com/Tempus-superest/EasyISP/issues).
 
 ## License
+
 This project is released into the public domain under The Unlicense, which means you can use, modify, and distribute it without any restrictions. More details can be found in the LICENSE file.
 
 ## Acknowledgments
+
 - Special thanks to the Kerbal Space Program community for their valuable feedback and support.
