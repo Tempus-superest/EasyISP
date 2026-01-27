@@ -22,6 +22,10 @@ Use these exact terms consistently across docu and code.
 
 ## Core Rules
 
+### ModuleManager timing
+
+EasyISP is intended to a global ISP multiplier. It MUST run in the ModuleManager `:FINAL` pass so it applies after all other engine balance changes and scales the final `atmosphereCurve` ISP values.
+
 ### versioning Rules
 
 All required files MUST be updated on every version change. The version MUST match across `EasyISP.version`, the Git tag, and the GitHub Release.
