@@ -1,0 +1,8 @@
+# Exclude everything by default
+* export-ignore
+
+# Files includes in tagged releases
+README.md        -export-ignore
+LICENSE          -export-ignore
+EasyISP.version  -export-ignore
+EasyISP.cfg      -export-ignore
