@@ -24,7 +24,7 @@ Use these exact terms consistently across docu and code.
 
 ### ModuleManager timing
 
-EasyISP is intended to a global ISP multiplier. It MUST run in the ModuleManager `:FINAL` pass so it applies after all other engine balance changes and scales the final `atmosphereCurve` ISP values.
+EasyISP is intended to be a global ISP multiplier. It MUST run in the ModuleManager `:FINAL` pass so it applies after all other engine balance changes and scales the final `atmosphereCurve` ISP values.
 
 ### versioning Rules
 
