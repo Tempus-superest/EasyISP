@@ -57,7 +57,7 @@ jobs:
           print("DOWNLOAD field matches expected release tag")
           PY
 
-      - name: Create GitHub release
+      - name: Create tag and GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
