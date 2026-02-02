@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  cat <<'USAGE' >&2
+  cat <<USAGE >&2
 Usage: $0 --version X.Y.Z
        VERSION can also be provided via the VERSION environment variable.
 USAGE
