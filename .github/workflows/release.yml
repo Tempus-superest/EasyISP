@@ -26,16 +26,27 @@ jobs:
       - name: Fetch tags
         run: git fetch --tags
 
-      - name: Ensure tag does not exist
+      - name: Check for existing tag/release
+        id: tag_check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Allow retries when packaging/upload fails after tag creation.
           tag="${{ steps.version.outputs.TAG }}"
           if git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
-            echo "Tag $tag already exists" >&2
-            exit 1
+            echo "Tag $tag already exists; verifying release is present for retry."
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              echo "Tag $tag exists but no GitHub release found." >&2
+              exit 1
+            fi
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Validate DOWNLOAD URL
         run: |
+          # Enforce that EasyISP.version points at the exact release tag URL.
           tag="${{ steps.version.outputs.TAG }}"
           python3 - "$tag" <<'PY'
           import json
@@ -57,10 +68,17 @@ jobs:
           print("DOWNLOAD field matches expected release tag")
           PY
 
+      - name: Package manifest files
+        run: |
+          # Build the canonical ZIP from the manifest to ensure GameData/EasyISP layout.
+          bash .github/scripts/package.sh --version "${{ steps.version.outputs.VERSION }}"
+
       - name: Create tag and GitHub release
+        if: steps.tag_check.outputs.tag_exists != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Create the release and tag in one step so packaging can attach assets immediately.
           tag="${{ steps.version.outputs.TAG }}"
           mode="${RELEASE_MODE:-draft}"
           if [[ "$mode" != "draft" && "$mode" != "publish" ]]; then
@@ -73,3 +91,22 @@ jobs:
           fi
           echo "Creating $mode release for $tag"
           "${args[@]}"
+
+      - name: Upload zip to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Upload the asset to the release without overwriting existing files.
+          tag="${{ steps.version.outputs.TAG }}"
+          asset="EasyISP-v${{ steps.version.outputs.VERSION }}.zip"
+          asset_path="$GITHUB_WORKSPACE/$asset"
+          if [[ ! -f "$asset_path" ]]; then
+            echo "Expected artifact $asset_path not found" >&2
+            exit 1
+          fi
+          gh release upload "$tag" "$asset_path"
+
+      - name: Confirm upload
+        run: |
+          # Confirm the asset name and tag for release logs.
+          echo "Uploaded EasyISP-v${{ steps.version.outputs.VERSION }}.zip to release ${{ steps.version.outputs.TAG }}"
