@@ -73,23 +73,39 @@ jobs:
           # Build the canonical ZIP from the manifest to ensure GameData/EasyISP layout.
           bash .github/scripts/package.sh --version "${{ steps.version.outputs.VERSION }}"
 
-      - name: Create tag and GitHub release
+      - name: Create and push tag
+        if: steps.tag_check.outputs.tag_exists != 'true'
+        run: |
+          # Create an annotated tag locally so the release references a real pushed tag.
+          tag="${{ steps.version.outputs.TAG }}"
+          # Ensure the tag is created only once on the release automation path.
+          git tag -a "$tag" -m "Release $tag"
+          # Push the tag before creating the GitHub release to avoid untagged URLs.
+          git push origin "$tag"
+
+      - name: Create GitHub release
         if: steps.tag_check.outputs.tag_exists != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Create the release and tag in one step so packaging can attach assets immediately.
+          # Create the release for the already-pushed tag so the URL resolves to the tag.
           tag="${{ steps.version.outputs.TAG }}"
+          # Normalize the release mode to draft by default to match existing automation behavior.
           mode="${RELEASE_MODE:-draft}"
+          # Validate the release mode so automation fails fast on unexpected values.
           if [[ "$mode" != "draft" && "$mode" != "publish" ]]; then
             echo "Invalid RELEASE_MODE '$mode'; allowed values are 'draft' or 'publish'" >&2
             exit 1
           fi
+          # Build the release creation command with auto-generated notes.
           args=(gh release create "$tag" --generate-notes)
+          # Add the draft flag when the release mode indicates a draft release.
           if [[ "$mode" == "draft" ]]; then
             args+=(--draft)
           fi
+          # Log the release intent for traceability in the workflow output.
           echo "Creating $mode release for $tag"
+          # Execute the GitHub release creation against the pushed tag.
           "${args[@]}"
 
       - name: Upload zip to release
