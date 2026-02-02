@@ -7,7 +7,7 @@
 
 ## Release Inputs
 
-- `EasyISP.version`: single source of truth for the version number (`VERSION.MAJOR/MINOR/PATCH`) and the `DOWNLOAD` URL that must match `https://github.com/Tempus-superest/EasyISP/releases/tag/vX.Y.Z`.
+- `EasyISP.version`: single source of truth for the version number (`VERSION.MAJOR`, `VERSION.MINOR`, `VERSION.PATCH`) and the `DOWNLOAD` URL that must match `https://github.com/Tempus-superest/EasyISP/releases/tag/vX.Y.Z`.
 - `release-manifest.txt`: lists the repository paths that must be copied into `GameData/EasyISP/` before zipping; the packaging script fails if any path is missing.
 
 ## Release Flow
