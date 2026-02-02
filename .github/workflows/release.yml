@@ -1,0 +1,75 @@
+name: Release Automation
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_MODE: ${{ vars.RELEASE_MODE }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: .github/scripts/get-version.sh
+
+      - name: Fetch tags
+        run: git fetch --tags
+
+      - name: Ensure tag does not exist
+        run: |
+          tag="${{ steps.version.outputs.TAG }}"
+          if git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists" >&2
+            exit 1
+          fi
+
+      - name: Validate DOWNLOAD URL
+        run: |
+          tag="${{ steps.version.outputs.TAG }}"
+          python3 - "$tag" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path("EasyISP.version")
+try:
+    data = json.loads(path.read_text())
+except Exception as exc:
+    raise SystemExit(f"Error reading EasyISP.version: {exc}")
+
+download = data.get("DOWNLOAD")
+if not isinstance(download, str):
+    raise SystemExit("Error: DOWNLOAD field missing or invalid in EasyISP.version")
+expected = f"https://github.com/Tempus-superest/EasyISP/releases/tag/{sys.argv[1]}"
+if download != expected:
+    raise SystemExit(f"DOWNLOAD must equal {expected}, got {download}")
+print("DOWNLOAD field matches expected release tag")
+PY
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.version.outputs.TAG }}"
+          mode="${RELEASE_MODE:-draft}"
+          if [[ "$mode" != "draft" && "$mode" != "publish" ]]; then
+            echo "Invalid RELEASE_MODE '$mode'; allowed values are 'draft' or 'publish'" >&2
+            exit 1
+          fi
+          args=(gh release create "$tag" --generate-notes)
+          if [[ "$mode" == "draft" ]]; then
+            args+=(--draft)
+          fi
+          echo "Creating $mode release for $tag"
+          "${args[@]}"
