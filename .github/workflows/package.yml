@@ -19,7 +19,7 @@ jobs:
 
       - name: Determine version
         id: version
-        run: .github/scripts/get-version.sh
+        run: bash .github/scripts/get-version.sh
 
       - name: Verify tag matches version
         run: |
@@ -32,7 +32,7 @@ jobs:
 
       - name: Package manifest files
         run: |
-          .github/scripts/package.sh --version "${{ steps.version.outputs.VERSION }}"
+          bash .github/scripts/package.sh --version "${{ steps.version.outputs.VERSION }}"
 
       - name: Upload zip to release
         env:

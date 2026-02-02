@@ -21,7 +21,7 @@ jobs:
 
       - name: Determine version
         id: version
-        run: .github/scripts/get-version.sh
+        run: bash .github/scripts/get-version.sh
 
       - name: Fetch tags
         run: git fetch --tags
