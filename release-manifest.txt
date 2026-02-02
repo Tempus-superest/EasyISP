@@ -1,0 +1,4 @@
+EasyISP.cfg
+EasyISP.version
+LICENSE
+README.md
