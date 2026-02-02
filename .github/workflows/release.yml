@@ -76,10 +76,10 @@ jobs:
       - name: Create and push tag
         if: steps.tag_check.outputs.tag_exists != 'true'
         run: |
-          # Create a lightweight tag locally so the release references a real pushed tag.
+          # Create an annotated tag locally so the release references a real pushed tag.
           tag="${{ steps.version.outputs.TAG }}"
           # Ensure the tag is created only once on the release automation path.
-          git tag "$tag"
+          git tag -a "$tag" -m "Release $tag"
           # Push the tag before creating the GitHub release to avoid untagged URLs.
           git push origin "$tag"
 
