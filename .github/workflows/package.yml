@@ -32,7 +32,7 @@ jobs:
 
       - name: Package manifest files
         run: |
-          bash .github/scripts/package.sh --version "${{ steps.version.outputs.VERSION }}"
+          .github/scripts/package.sh --version "${{ steps.version.outputs.VERSION }}"
 
       - name: Upload zip to release
         env:
