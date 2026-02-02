@@ -33,6 +33,8 @@
 - Fresh tags are enforced by fetching the full tag history (`fetch-depth: 0`).
 - Packaging wipes `dist/GameData/EasyISP/` before staging the manifest contents, so every build starts clean.
 - Release workflow checks `DOWNLOAD` and tag equality; packaging workflow enforces `github.ref_name` equals the parsed tag and that all manifest entries exist.
+- The workflows invoke scripts under `.github/scripts/` directly, so those files must stay executable in git.
+- `gh release upload` runs without overwriting assets; reruns must delete the existing asset first so failures surface.
 
 ### Failure handling
 
