@@ -6,6 +6,7 @@
 
 - `/AGENTS.md` - AI coding tool instructions for working in this repo
 - `/README.md` - Human facing overview of **EasyISP**
+- `/RELEASING.md` — Maintainer-facing release process and automation rules
 
 ## Terminology
 
