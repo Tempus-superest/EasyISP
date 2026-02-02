@@ -1,0 +1,52 @@
+name: Release Packaging
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: .github/scripts/get-version.sh
+
+      - name: Verify tag matches version
+        run: |
+          tag="${{ github.ref_name }}"
+          expected="${{ steps.version.outputs.TAG }}"
+          if [[ "$tag" != "$expected" ]]; then
+            echo "Tag mismatch: expected $expected but got $tag" >&2
+            exit 1
+          fi
+
+      - name: Package manifest files
+        run: |
+          bash .github/scripts/package.sh --version "${{ steps.version.outputs.VERSION }}"
+
+      - name: Upload zip to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.version.outputs.TAG }}"
+          asset="EasyISP-v${{ steps.version.outputs.VERSION }}.zip"
+          asset_path="$GITHUB_WORKSPACE/$asset"
+          if [[ ! -f "$asset_path" ]]; then
+            echo "Expected artifact $asset_path not found" >&2
+            exit 1
+          fi
+          gh release upload "$tag" "$asset_path"
+
+      - name: Confirm upload
+        run: |
+          echo "Uploaded EasyISP-v${{ steps.version.outputs.VERSION }}.zip to release ${{ steps.version.outputs.TAG }}"
