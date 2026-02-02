@@ -39,6 +39,8 @@ for key in ("MAJOR", "MINOR", "PATCH"):
         sys.exit(f"Error: VERSION.{key} missing in EasyISP.version")
     if not isinstance(value, int):
         sys.exit(f"Error: VERSION.{key} must be an integer")
+    if value < 0:
+        sys.exit(f"Error: VERSION.{key} must be a non-negative integer")
     parts.append(str(value))
 
 print(" ".join(parts))
