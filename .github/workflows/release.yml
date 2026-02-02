@@ -38,24 +38,24 @@ jobs:
         run: |
           tag="${{ steps.version.outputs.TAG }}"
           python3 - "$tag" <<'PY'
-import json
-import pathlib
-import sys
+          import json
+          import pathlib
+          import sys
 
-path = pathlib.Path("EasyISP.version")
-try:
-    data = json.loads(path.read_text())
-except Exception as exc:
-    raise SystemExit(f"Error reading EasyISP.version: {exc}")
+          path = pathlib.Path("EasyISP.version")
+          try:
+              data = json.loads(path.read_text())
+          except Exception as exc:
+              raise SystemExit(f"Error reading EasyISP.version: {exc}")
 
-download = data.get("DOWNLOAD")
-if not isinstance(download, str):
-    raise SystemExit("Error: DOWNLOAD field missing or invalid in EasyISP.version")
-expected = f"https://github.com/Tempus-superest/EasyISP/releases/tag/{sys.argv[1]}"
-if download != expected:
-    raise SystemExit(f"DOWNLOAD must equal {expected}, got {download}")
-print("DOWNLOAD field matches expected release tag")
-PY
+          download = data.get("DOWNLOAD")
+          if not isinstance(download, str):
+              raise SystemExit("Error: DOWNLOAD field missing or invalid in EasyISP.version")
+          expected = f"https://github.com/Tempus-superest/EasyISP/releases/tag/{sys.argv[1]}"
+          if download != expected:
+              raise SystemExit(f"DOWNLOAD must equal {expected}, got {download}")
+          print("DOWNLOAD field matches expected release tag")
+          PY
 
       - name: Create GitHub release
         env:
