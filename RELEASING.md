@@ -16,7 +16,7 @@
 2. `.github/scripts/get-version.sh` parses `EasyISP.version` to produce `VERSION` and `TAG` (`vX.Y.Z`).
 3. The release workflow fetches tags and exits if `TAG` already exists.
 4. The workflow validates `DOWNLOAD` matches the expected release URL.
-5. An annotated tag `vX.Y.Z` is created and pushed.
+5. A lightweight tag `vX.Y.Z` is created and pushed.
 6. `gh release create` is invoked with `--draft` when `RELEASE_MODE` is unset or `draft`, and without it when `RELEASE_MODE=publish`.
 7. Pushing `vX.Y.Z` runs the packaging workflow: it ensures `github.ref_name` equals `TAG`, copies files from `release-manifest.txt` into `dist/GameData/EasyISP/`, and builds `EasyISP-vX.Y.Z.zip` containing only `GameData/...`.
 8. The packaging workflow uploads the ZIP to the GitHub Release matching the tag.
