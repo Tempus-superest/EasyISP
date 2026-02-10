@@ -57,8 +57,14 @@ jobs:
               -A "EasyISP-Spacedock-Preflight/${GITHUB_REPOSITORY}" \
               --form-string "username=$SPACEDOCK_USERNAME" \
               --form-string "password=$SPACEDOCK_PASSWORD" \
-              "$login_url"
+              "$login_url" \
           > "$login_metrics" || curl_exit=$?
+
+          metrics_missing=false
+          metrics_size="$(wc -c < "$login_metrics" 2>/dev/null || echo 0)"
+          if [ ! -s "$login_metrics" ]; then
+            metrics_missing=true
+          fi
 
           http_code="$(sed -n '1p' "$login_metrics" | tr -d '\r\n' || true)"
           http_code="${http_code:-000}"
@@ -97,6 +103,15 @@ jobs:
             echo "content_type=$content_type" >> "$GITHUB_OUTPUT"
             echo "final_url=$final_url" >> "$GITHUB_OUTPUT"
             echo "SpaceDock preflight failed (transport): curl_exit_${curl_exit}"
+          elif [ "$metrics_missing" = true ]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "http_code=000" >> "$GITHUB_OUTPUT"
+            echo "reason=missing_metrics" >> "$GITHUB_OUTPUT"
+            echo "content_type=$content_type" >> "$GITHUB_OUTPUT"
+            echo "final_url=$final_url" >> "$GITHUB_OUTPUT"
+            echo "SpaceDock preflight failed: missing_metrics (size=${metrics_size} bytes)."
+            echo "Metrics lines:"
+            sed -n '1,2p' "$login_metrics" || true
           elif [ "$http_code" != "200" ] || [ "$api_error" != "false" ]; then
             echo "ok=false" >> "$GITHUB_OUTPUT"
             echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
