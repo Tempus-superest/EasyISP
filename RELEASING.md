@@ -5,7 +5,7 @@
 EasyISP release automation has two workflows:
 
 - `.github/workflows/release.yml` runs on every push to `main`. It determines `vX.Y.Z` from `EasyISP.version`, validates metadata, builds `EasyISP-vX.Y.Z.zip`, creates/updates the matching GitHub Release, and uploads the ZIP asset.
-- `.github/workflows/spacedock.yml` runs only on `release: published`. It downloads the GitHub release ZIP and publishes it to SpaceDock via the native script `.github/scripts/spacedock_upload.sh`.
+- `.github/workflows/spacedock.yml` runs only on `release: published`. It downloads the GitHub release ZIP and publishes it to SpaceDock via `KSP2Community/spacedock-upload@v1.0.1`.
 
 ## Required Version Consistency
 
@@ -61,12 +61,13 @@ Process:
 
 1. Download `EasyISP-vX.Y.Z.zip` from the published GitHub Release tag.
 2. Write `github.event.release.body` to a temporary changelog file.
-3. Run API preflight login check against `https://spacedock.info/api/login` with sanitized diagnostics.
-4. If preflight succeeds, run `.github/scripts/spacedock_upload.sh` to:
-   - login via SpaceDock API,
-   - resolve latest game version for `SPACEDOCK_GAME_ID`,
-   - upload mod update with version, changelog, and zipball.
-5. If preflight fails, stop the workflow with a clear non-secret error summary.
+3. Run `KSP2Community/spacedock-upload@v1.0.1` with:
+   - SpaceDock credentials (`SPACEDOCK_USERNAME`, `SPACEDOCK_PASSWORD`)
+   - mod/game IDs (`SPACEDOCK_MOD_ID`, `SPACEDOCK_GAME_ID`)
+   - Git tag version (`vX.Y.Z`)
+   - downloaded ZIP path as `zipball`
+   - prepared changelog file path
+   - `spacedock_website: spacedock.info`
 
 ## SpaceDock Configuration
 
@@ -92,11 +93,6 @@ Required/optional GitHub variables:
   - Stages files into `dist/GameData/EasyISP/`.
   - Produces `EasyISP-vX.Y.Z.zip` in repo root.
 
-- `.github/scripts/spacedock_upload.sh`
-  - Performs authenticated SpaceDock API upload using multipart form data.
-  - Masks credentials in logs.
-  - Fails on non-200 or API error responses with sanitized reasons.
-
 ## Failure Handling
 
 - Release workflow fails fast on:
@@ -107,9 +103,9 @@ Required/optional GitHub variables:
   - missing ZIP or upload errors.
 
 - SpaceDock workflow fails fast on:
-  - API preflight login failure,
-  - missing required SpaceDock env vars,
-  - upload/API errors.
+  - missing required SpaceDock secrets/vars,
+  - release asset download failures,
+  - SpaceDock action upload/auth/API failures.
 
 ## Operational Notes
 

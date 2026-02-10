@@ -35,126 +35,14 @@ jobs:
           printf '%s\n' "${{ github.event.release.body }}" > "$changelog_file"
           echo "changelog_file=$changelog_file" >> "$GITHUB_OUTPUT"
 
-      - name: SpaceDock API preflight
-        id: preflight
-        env:
-          SPACEDOCK_USERNAME: ${{ secrets.SPACEDOCK_USERNAME }}
-          SPACEDOCK_PASSWORD: ${{ secrets.SPACEDOCK_PASSWORD }}
-          SPACEDOCK_WEBSITE: https://spacedock.info
-        run: |
-          set -euo pipefail
-          echo "::add-mask::$SPACEDOCK_USERNAME"
-          echo "::add-mask::$SPACEDOCK_PASSWORD"
-
-          login_json="$RUNNER_TEMP/spacedock-login-preflight.json"
-          login_headers="$RUNNER_TEMP/spacedock-login-preflight.headers"
-          login_metrics="$RUNNER_TEMP/spacedock-login-preflight.metrics"
-          login_url="$SPACEDOCK_WEBSITE/api/login"
-          curl_exit=0
-          # Use --form-string so credentials are sent literally; -F can treat
-          # leading @/< as file syntax and break auth for edge-case secrets.
-          curl -sS -L -D "$login_headers" -o "$login_json" -w "%{http_code}\n%{url_effective}" \
-              -A "EasyISP-Spacedock-Preflight/${GITHUB_REPOSITORY}" \
-              --form-string "username=$SPACEDOCK_USERNAME" \
-              --form-string "password=$SPACEDOCK_PASSWORD" \
-              "$login_url" \
-          > "$login_metrics" || curl_exit=$?
-
-          metrics_missing=false
-          metrics_size="$(wc -c < "$login_metrics" 2>/dev/null || echo 0)"
-          if [ ! -s "$login_metrics" ]; then
-            metrics_missing=true
-          fi
-
-          http_code="$(sed -n '1p' "$login_metrics" | tr -d '\r\n' || true)"
-          http_code="${http_code:-000}"
-          final_url="$(sed -n '2p' "$login_metrics" | tr -d '\r\n' || true)"
-          final_url="${final_url:-$login_url}"
-
-          content_type="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {sub(/\r$/,"",$0); sub(/^content-type:[[:space:]]*/,"",$0); last=$0} END{if (last!="") print last}' "$login_headers" || true)"
-          content_type="${content_type:-unknown}"
-
-          reason="none"
-          api_error="unknown"
-          is_json=false
-          case "$content_type" in
-            application/json*|application/*+json*) is_json=true ;;
-          esac
-
-          if [ "$is_json" = true ]; then
-            api_error_raw="$(jq -r '.error // "unknown"' "$login_json" 2>/dev/null || true)"
-            reason_raw="$(jq -r '.reason // "none"' "$login_json" 2>/dev/null || true)"
-            if [ -z "$api_error_raw" ] || [ "$api_error_raw" = "null" ]; then
-              api_error="unknown"
-              reason="jq_parse_failed"
-            else
-              api_error="$(printf '%s' "$api_error_raw" | tr -d '\r\n' | tr '[:upper:]' '[:lower:]')"
-              reason="$(printf '%s' "${reason_raw:-none}" | tr '\r\n' ' ' | sed 's/[^[:print:]]/?/g')"
-              reason="${reason:-none}"
-            fi
-          else
-            reason="non_json_response"
-          fi
-
-          if [ "$curl_exit" -ne 0 ]; then
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "http_code=000" >> "$GITHUB_OUTPUT"
-            echo "reason=curl_exit_${curl_exit}" >> "$GITHUB_OUTPUT"
-            echo "content_type=$content_type" >> "$GITHUB_OUTPUT"
-            echo "final_url=$final_url" >> "$GITHUB_OUTPUT"
-            echo "SpaceDock preflight failed (transport): curl_exit_${curl_exit}"
-          elif [ "$metrics_missing" = true ]; then
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "http_code=000" >> "$GITHUB_OUTPUT"
-            echo "reason=missing_metrics" >> "$GITHUB_OUTPUT"
-            echo "content_type=$content_type" >> "$GITHUB_OUTPUT"
-            echo "final_url=$final_url" >> "$GITHUB_OUTPUT"
-            echo "SpaceDock preflight failed: missing_metrics (size=${metrics_size} bytes)."
-            echo "Metrics lines:"
-            sed -n '1,2p' "$login_metrics" || true
-          elif [ "$http_code" != "200" ] || [ "$api_error" != "false" ]; then
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
-            echo "reason=$reason" >> "$GITHUB_OUTPUT"
-            echo "content_type=$content_type" >> "$GITHUB_OUTPUT"
-            echo "final_url=$final_url" >> "$GITHUB_OUTPUT"
-            if [ "$reason" = "non_json_response" ] || [ "$reason" = "jq_parse_failed" ]; then
-              snippet="$(head -c 200 "$login_json" 2>/dev/null | tr '\r\n' ' ' | sed 's/[^[:print:]]/?/g' || true)"
-              snippet="${snippet:-empty}"
-              echo "SpaceDock preflight failed (HTTP $http_code, Content-Type: $content_type, URL: $final_url): $reason"
-              echo "Response snippet: $snippet"
-            else
-              echo "SpaceDock preflight failed (HTTP $http_code, Content-Type: $content_type, URL: $final_url): $reason"
-            fi
-          else
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-            echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
-            echo "reason=ok" >> "$GITHUB_OUTPUT"
-            echo "content_type=$content_type" >> "$GITHUB_OUTPUT"
-            echo "final_url=$final_url" >> "$GITHUB_OUTPUT"
-            echo "SpaceDock preflight succeeded (HTTP $http_code, Content-Type: $content_type, URL: $final_url)."
-          fi
-
-      - name: Upload to SpaceDock (native API script)
-        if: steps.preflight.outputs.ok == 'true'
-        env:
-          SPACEDOCK_USERNAME: ${{ secrets.SPACEDOCK_USERNAME }}
-          SPACEDOCK_PASSWORD: ${{ secrets.SPACEDOCK_PASSWORD }}
-          SPACEDOCK_WEBSITE: https://spacedock.info
-          SPACEDOCK_MOD_ID: ${{ vars.SPACEDOCK_MOD_ID }}
-          SPACEDOCK_GAME_ID: ${{ vars.SPACEDOCK_GAME_ID || '3102' }}
-          SPACEDOCK_VERSION: ${{ github.event.release.tag_name }}
-          SPACEDOCK_ZIPBALL: ${{ steps.download-asset.outputs.asset }}
-          SPACEDOCK_CHANGELOG_FILE: ${{ steps.prepare-changelog.outputs.changelog_file }}
-        run: ./.github/scripts/spacedock_upload.sh
-
-      - name: Fail if preflight did not pass
-        if: steps.preflight.outputs.ok != 'true'
-        run: |
-          echo "SpaceDock upload skipped because API preflight did not succeed."
-          echo "This usually indicates bad credentials or an account/API constraint."
-          echo "Preflight HTTP: ${{ steps.preflight.outputs.http_code }}"
-          echo "Preflight Content-Type: ${{ steps.preflight.outputs.content_type }}"
-          echo "Preflight URL: ${{ steps.preflight.outputs.final_url }}"
-          echo "Preflight reason: ${{ steps.preflight.outputs.reason }}"
-          exit 1
+      - name: Upload to SpaceDock
+        uses: KSP2Community/spacedock-upload@v1.0.1
+        with:
+          username: ${{ secrets.SPACEDOCK_USERNAME }}
+          password: ${{ secrets.SPACEDOCK_PASSWORD }}
+          mod_id: ${{ vars.SPACEDOCK_MOD_ID }}
+          game_id: ${{ vars.SPACEDOCK_GAME_ID || '3102' }}
+          version: ${{ github.event.release.tag_name }}
+          zipball: ${{ steps.download-asset.outputs.asset }}
+          changelog: ${{ steps.prepare-changelog.outputs.changelog_file }}
+          spacedock_website: spacedock.info
