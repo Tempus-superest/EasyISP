@@ -73,6 +73,12 @@ curl -sS -L -D "$login_headers" -o "$login_json" -w "%{http_code}\n%{url_effecti
   "$base_url/api/login" \
 > "$login_metrics" || login_curl_exit=$?
 
+metrics_missing=false
+metrics_size="$(wc -c < "$login_metrics" 2>/dev/null || echo 0)"
+if [ ! -s "$login_metrics" ]; then
+  metrics_missing=true
+fi
+
 login_http="$(sed -n '1p' "$login_metrics" | tr -d '\r\n' || true)"
 login_http="${login_http:-000}"
 final_url="$(sed -n '2p' "$login_metrics" | tr -d '\r\n' || true)"
@@ -106,6 +112,10 @@ fi
 if [ "$login_curl_exit" -ne 0 ] || [ "$login_http" != "200" ] || [ "$login_error" != "false" ]; then
   if [ "$login_curl_exit" -ne 0 ]; then
     echo "SpaceDock API login failed (transport curl_exit_${login_curl_exit}, URL: $final_url)." >&2
+  elif [ "$metrics_missing" = true ]; then
+    echo "SpaceDock API login failed: missing_metrics (size=${metrics_size} bytes)." >&2
+    echo "Metrics lines:" >&2
+    sed -n '1,2p' "$login_metrics" >&2 || true
   elif [ "$login_reason" = "non_json_response" ] || [ "$login_reason" = "jq_parse_failed" ]; then
     snippet="$(head -c 200 "$login_json" 2>/dev/null | tr '\r\n' ' ' | sed 's/[^[:print:]]/?/g' || true)"
     snippet="${snippet:-empty}"
