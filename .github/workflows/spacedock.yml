@@ -28,15 +28,13 @@ jobs:
           echo "asset=$asset" >> "$GITHUB_OUTPUT"
           gh release download "$tag" --pattern "$asset"
 
-      - name: Prepare changelog file
-        id: prepare-changelog
-        run: |
-          changelog_file="$RUNNER_TEMP/spacedock-changelog.txt"
-          printf '%s\n' "${{ github.event.release.body }}" > "$changelog_file"
-          echo "changelog_file=$changelog_file" >> "$GITHUB_OUTPUT"
-
       - name: Upload to SpaceDock
-        uses: KSP2Community/spacedock-upload@v1.0.1
+        # Intentionally vendored from:
+        # https://github.com/KSP2Community/spacedock-upload (previously pinned to v1.0.1)
+        # Upstream quoting bug evidence:
+        # https://github.com/KSP2Community/spacedock-upload/issues/2
+        # Do not switch back to upstream until fixed there and re-verified with metachar secrets.
+        uses: ./.github/actions/spacedock-upload
         with:
           username: ${{ secrets.SPACEDOCK_USERNAME }}
           password: ${{ secrets.SPACEDOCK_PASSWORD }}
@@ -44,5 +42,5 @@ jobs:
           game_id: ${{ vars.SPACEDOCK_GAME_ID || '3102' }}
           version: ${{ github.event.release.tag_name }}
           zipball: ${{ steps.download-asset.outputs.asset }}
-          changelog: ${{ steps.prepare-changelog.outputs.changelog_file }}
+          changelog: ${{ github.event.release.body }}
           spacedock_website: spacedock.info
