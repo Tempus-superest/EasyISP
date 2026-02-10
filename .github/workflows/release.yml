@@ -97,16 +97,9 @@ jobs:
             echo "Invalid RELEASE_MODE '$mode'; allowed values are 'draft' or 'publish'" >&2
             exit 1
           fi
-          # Build the release creation command with auto-generated notes.
-          args=(gh release create "$tag" --generate-notes)
-          # Add the draft flag when the release mode indicates a draft release.
-          if [[ "$mode" == "draft" ]]; then
-            args+=(--draft)
-          fi
-          # Log the release intent for traceability in the workflow output.
-          echo "Creating $mode release for $tag"
-          # Execute the GitHub release creation against the pushed tag.
-          "${args[@]}"
+          # Always create the release as a draft initially to keep downstream ordering predictable.
+          echo "Creating draft release for $tag (mode=$mode)"
+          gh release create "$tag" --generate-notes --draft
 
       - name: Upload zip to release
         env:
@@ -121,6 +114,15 @@ jobs:
             exit 1
           fi
           gh release upload "$tag" "$asset_path"
+
+      - name: Publish GitHub release
+        if: env.RELEASE_MODE == 'publish'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.version.outputs.TAG }}"
+          echo "Publishing release $tag now that assets are uploaded"
+          gh release edit "$tag" --draft=false
 
       - name: Confirm upload
         run: |
