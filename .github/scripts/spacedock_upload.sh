@@ -39,11 +39,19 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-password_encoded="$(printf '%s' "$SPACEDOCK_PASSWORD" | jq -sRr @uri)"
+password_encoded="$SPACEDOCK_PASSWORD"
+login_mode="raw"
+encoded_try="$(printf '%s' "$SPACEDOCK_PASSWORD" | jq -sRr @uri 2>/dev/null || true)"
+if [ -n "$encoded_try" ]; then
+  password_encoded="$encoded_try"
+  login_mode="encoded"
+fi
 if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
   echo "::add-mask::$SPACEDOCK_USERNAME"
   echo "::add-mask::$SPACEDOCK_PASSWORD"
-  echo "::add-mask::$password_encoded"
+  if [ "$login_mode" = "encoded" ]; then
+    echo "::add-mask::$password_encoded"
+  fi
 fi
 
 tmp_dir="$(mktemp -d)"
@@ -62,7 +70,6 @@ base_url="${SPACEDOCK_WEBSITE%/}"
 user_agent="EasyISP-Spacedock-Native/${GITHUB_REPOSITORY:-local}"
 
 echo "Logging in to SpaceDock API..."
-login_mode="encoded"
 login_curl_exit=0
 login_http=""
 login_error="unknown"
@@ -98,7 +105,7 @@ login_succeeded() {
 login_http="$(run_login "$password_encoded")" || login_curl_exit=$?
 parse_login_json
 
-if ! login_succeeded; then
+if ! login_succeeded && [ "$login_mode" != "raw" ]; then
   login_mode="raw"
   login_curl_exit=0
   login_http="$(run_login "$SPACEDOCK_PASSWORD")" || login_curl_exit=$?

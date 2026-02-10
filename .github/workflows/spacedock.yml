@@ -48,9 +48,14 @@ jobs:
 
           login_json="$RUNNER_TEMP/spacedock-login-preflight.json"
           login_url="$SPACEDOCK_WEBSITE/api/login"
-          password_encoded="$(printf '%s' "$SPACEDOCK_PASSWORD" | jq -sRr @uri)"
-          echo "::add-mask::$password_encoded"
-          login_mode="encoded"
+          password_encoded="$SPACEDOCK_PASSWORD"
+          login_mode="raw"
+          encoded_try="$(printf '%s' "$SPACEDOCK_PASSWORD" | jq -sRr @uri 2>/dev/null || true)"
+          if [ -n "$encoded_try" ]; then
+            password_encoded="$encoded_try"
+            login_mode="encoded"
+            echo "::add-mask::$password_encoded"
+          fi
           curl_exit=0
           http_code=""
           api_error="unknown"
@@ -86,7 +91,7 @@ jobs:
           http_code="$(run_login "$password_encoded")" || curl_exit=$?
           parse_login_json
 
-          if ! login_succeeded; then
+          if ! login_succeeded && [ "$login_mode" != "raw" ]; then
             login_mode="raw"
             curl_exit=0
             http_code="$(run_login "$SPACEDOCK_PASSWORD")" || curl_exit=$?
