@@ -74,6 +74,7 @@ Process:
 - Upstream action repository: https://github.com/KSP2Community/spacedock-upload
 - Upstream issue showing auth breakage from unquoted secret expansion: https://github.com/KSP2Community/spacedock-upload/issues/2
 - EasyISP previously pinned upstream `v1.0.1`, then vendored and patched locally for literal-safe password handling.
+- Vendored login sends username/password as literal multipart form strings and does not URL-encode password for `/api/login`.
 - Do not switch back to upstream in the workflow until an upstream fix is released and verified with special-character secrets.
 
 ## SpaceDock Configuration
