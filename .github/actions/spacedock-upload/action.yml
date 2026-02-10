@@ -51,13 +51,16 @@ runs:
       run: echo "::add-mask::${{ inputs.password }}"
       shell: bash
     - name: Log in to spacedock
+      env:
+        PASSWORD: ${{ inputs.password }}
       run: |
-        encoded_password=$(printf '%s' '${{ inputs.password }}' | jq -sRr @uri)
+        set -euo pipefail
+        encoded_password=$(printf '%s' "$PASSWORD" | jq -sRr @uri)
         echo "::add-mask::$encoded_password"
         login_response=$(curl -F "username=${{ inputs.username }}" -F "password=$encoded_password" -c ./cookies "https://${{ inputs.spacedock_website }}/api/login")
-        login_errored=$(echo "$login_response" | jq .error)
+        login_errored=$(echo "$login_response" | jq -r '.error // "unknown"')
         if [ "$login_errored" == "true" ]; then
-          echo "Login to space dock errored: $(echo "$login_response" | jq .reason)"
+          echo "Login to space dock errored: $(echo "$login_response" | jq -r '.reason // "unknown"')"
           exit 1
         else
           echo "Login to space dock successful"
@@ -66,15 +69,19 @@ runs:
 
     - name: Query latest game version
       run: |
-        echo "LATEST_GAME_VERSION=$(curl 'https://${{ inputs.spacedock_website }}/api/${{ inputs.game_id }}/versions' | jq '.[0].friendly_version' | tr -d \")" >> $GITHUB_ENV
+        set -euo pipefail
+        echo "LATEST_GAME_VERSION=$(curl 'https://${{ inputs.spacedock_website }}/api/${{ inputs.game_id }}/versions' | jq -r '.[0].friendly_version')" >> "$GITHUB_ENV"
       shell: bash
 
     - name: Update mod on spacedock
+      env:
+        CHANGELOG: ${{ inputs.changelog }}
       run: |
-        result=$(curl -b ./cookies -F "version=${{ inputs.version }}" -F "changelog=${{ inputs.changelog }}" -F "game-version=${{ env.LATEST_GAME_VERSION }}" -F "notify-followers=${{ inputs.notify-followers }}" -F "zipball=@${{ inputs.zipball }}" "https://${{ inputs.spacedock_website }}/api/mod/${{ inputs.mod_id }}/update")
-        errored=$(echo "$result" | jq .error)
+        set -euo pipefail
+        result=$(curl -b ./cookies -F "version=${{ inputs.version }}" --form-string "changelog=$CHANGELOG" -F "game-version=${{ env.LATEST_GAME_VERSION }}" -F "notify-followers=${{ inputs.notify-followers }}" -F "zipball=@${{ inputs.zipball }}" "https://${{ inputs.spacedock_website }}/api/mod/${{ inputs.mod_id }}/update")
+        errored=$(echo "$result" | jq -r '.error // "unknown"')
         if [ "$errored" == "true" ]; then
-          echo "Upload to space dock errored: $(echo "$result" | jq .reason)"
+          echo "Upload to space dock errored: $(echo "$result" | jq -r '.reason // "unknown"')"
           exit 1
         else
           echo "Upload to space dock successful"

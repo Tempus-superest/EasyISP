@@ -33,7 +33,7 @@ jobs:
         # https://github.com/KSP2Community/spacedock-upload (previously pinned to v1.0.1)
         # Upstream quoting bug evidence:
         # https://github.com/KSP2Community/spacedock-upload/issues/2
-        # Do not switch back to upstream until fixed there and re-verified with metachar secrets.
+        # Do not switch back to upstream until fixed there and re-verified with metacharacter secrets.
         uses: ./.github/actions/spacedock-upload
         with:
           username: ${{ secrets.SPACEDOCK_USERNAME }}
