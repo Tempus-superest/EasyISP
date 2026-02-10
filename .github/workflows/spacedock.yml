@@ -47,77 +47,72 @@ jobs:
           echo "::add-mask::$SPACEDOCK_PASSWORD"
 
           login_json="$RUNNER_TEMP/spacedock-login-preflight.json"
+          login_headers="$RUNNER_TEMP/spacedock-login-preflight.headers"
           login_url="$SPACEDOCK_WEBSITE/api/login"
-          password_encoded="$SPACEDOCK_PASSWORD"
-          login_mode="raw"
-          encoded_try="$(printf '%s' "$SPACEDOCK_PASSWORD" | jq -sRr @uri 2>/dev/null || true)"
-          if [ -n "$encoded_try" ]; then
-            password_encoded="$encoded_try"
-            login_mode="encoded"
-            echo "::add-mask::$password_encoded"
-          fi
           curl_exit=0
-          http_code=""
-          api_error="unknown"
-          reason="none"
-          run_login() {
-            local password_value="$1"
-            curl -sS -o "$login_json" -w "%{http_code}" \
+          http_code="$(
+            curl -sS -L -D "$login_headers" -o "$login_json" -w "%{http_code}" \
               -A "EasyISP-Spacedock-Preflight/${GITHUB_REPOSITORY}" \
-              --form-string "username=$SPACEDOCK_USERNAME" \
-              --form-string "password=$password_value" \
+              -F "username=$SPACEDOCK_USERNAME" \
+              -F "password=$SPACEDOCK_PASSWORD" \
               "$login_url"
-          }
-          parse_login_json() {
-            reason="$(
-              jq -r '.reason // "none"' "$login_json" 2>/dev/null \
-                | tr '\r\n' ' ' \
-                | sed 's/[^[:print:]]/?/g' \
-                || true
-            )"
-            reason="${reason:-none}"
-            api_error="$(
-              jq -r '.error // "unknown"' "$login_json" 2>/dev/null \
-                | tr -d '\r\n' \
-                | tr '[:upper:]' '[:lower:]' \
-                || true
-            )"
-            api_error="${api_error:-unknown}"
-          }
-          login_succeeded() {
-            [ "$curl_exit" -eq 0 ] && [ "$http_code" = "200" ] && [ "$api_error" = "false" ]
-          }
+          )" || curl_exit=$?
 
-          http_code="$(run_login "$password_encoded")" || curl_exit=$?
-          parse_login_json
+          content_type="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {sub(/\r$/,"",$0); sub(/^content-type:[[:space:]]*/,"",$0); last=$0} END{if (last!="") print last}' "$login_headers" || true)"
+          content_type="${content_type:-unknown}"
+          final_url="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/\r$/,"",$0); sub(/^location:[[:space:]]*/,"",$0); last=$0} END{if (last!="") print last}' "$login_headers" || true)"
+          final_url="${final_url:-$login_url}"
 
-          if ! login_succeeded && [ "$login_mode" != "raw" ]; then
-            login_mode="raw"
-            curl_exit=0
-            http_code="$(run_login "$SPACEDOCK_PASSWORD")" || curl_exit=$?
-            parse_login_json
+          reason="none"
+          api_error="unknown"
+          is_json=false
+          case "$content_type" in
+            application/json*|application/*+json*) is_json=true ;;
+          esac
+
+          if [ "$is_json" = true ]; then
+            api_error_raw="$(jq -r '.error // "unknown"' "$login_json" 2>/dev/null || true)"
+            reason_raw="$(jq -r '.reason // "none"' "$login_json" 2>/dev/null || true)"
+            if [ -z "$api_error_raw" ] || [ "$api_error_raw" = "null" ]; then
+              api_error="unknown"
+              reason="jq_parse_failed"
+            else
+              api_error="$(printf '%s' "$api_error_raw" | tr -d '\r\n' | tr '[:upper:]' '[:lower:]')"
+              reason="$(printf '%s' "${reason_raw:-none}" | tr '\r\n' ' ' | sed 's/[^[:print:]]/?/g')"
+              reason="${reason:-none}"
+            fi
+          else
+            reason="non_json_response"
           fi
 
           if [ "$curl_exit" -ne 0 ]; then
             echo "ok=false" >> "$GITHUB_OUTPUT"
             echo "http_code=000" >> "$GITHUB_OUTPUT"
             echo "reason=curl_exit_${curl_exit}" >> "$GITHUB_OUTPUT"
+            echo "content_type=$content_type" >> "$GITHUB_OUTPUT"
+            echo "final_url=$final_url" >> "$GITHUB_OUTPUT"
             echo "SpaceDock preflight failed (transport): curl_exit_${curl_exit}"
-          elif [ "$http_code" != "200" ]; then
+          elif [ "$http_code" != "200" ] || [ "$api_error" != "false" ]; then
             echo "ok=false" >> "$GITHUB_OUTPUT"
             echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
             echo "reason=$reason" >> "$GITHUB_OUTPUT"
-            echo "SpaceDock preflight failed (HTTP $http_code): $reason"
-          elif [ "$api_error" = "false" ]; then
+            echo "content_type=$content_type" >> "$GITHUB_OUTPUT"
+            echo "final_url=$final_url" >> "$GITHUB_OUTPUT"
+            if [ "$reason" = "non_json_response" ] || [ "$reason" = "jq_parse_failed" ]; then
+              snippet="$(head -c 200 "$login_json" 2>/dev/null | tr '\r\n' ' ' | sed 's/[^[:print:]]/?/g' || true)"
+              snippet="${snippet:-empty}"
+              echo "SpaceDock preflight failed (HTTP $http_code, Content-Type: $content_type, URL: $final_url): $reason"
+              echo "Response snippet: $snippet"
+            else
+              echo "SpaceDock preflight failed (HTTP $http_code, Content-Type: $content_type, URL: $final_url): $reason"
+            fi
+          else
             echo "ok=true" >> "$GITHUB_OUTPUT"
             echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
             echo "reason=ok" >> "$GITHUB_OUTPUT"
-            echo "SpaceDock preflight succeeded (HTTP $http_code, login_mode=$login_mode)."
-          else
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
-            echo "reason=$reason" >> "$GITHUB_OUTPUT"
-            echo "SpaceDock preflight reported API error (login_mode=$login_mode): $reason"
+            echo "content_type=$content_type" >> "$GITHUB_OUTPUT"
+            echo "final_url=$final_url" >> "$GITHUB_OUTPUT"
+            echo "SpaceDock preflight succeeded (HTTP $http_code, Content-Type: $content_type, URL: $final_url)."
           fi
 
       - name: Upload to SpaceDock (native API script)
@@ -139,5 +134,7 @@ jobs:
           echo "SpaceDock upload skipped because API preflight did not succeed."
           echo "This usually indicates bad credentials or an account/API constraint."
           echo "Preflight HTTP: ${{ steps.preflight.outputs.http_code }}"
+          echo "Preflight Content-Type: ${{ steps.preflight.outputs.content_type }}"
+          echo "Preflight URL: ${{ steps.preflight.outputs.final_url }}"
           echo "Preflight reason: ${{ steps.preflight.outputs.reason }}"
           exit 1
