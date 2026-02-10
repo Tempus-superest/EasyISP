@@ -18,11 +18,11 @@ Tune **ISP** down for a tougher career, up for a more relaxed game, or push into
 
 ## Installation
 
-[CKAN](https://github.com/KSP-CKAN/CKAN) installation is preferred.
+Install EasyISP via [CKAN](https://github.com/KSP-CKAN/CKAN) for an automated setup; CKAN installs the same files/layout described below.
 
 ### Manual installation
 
-- Download the [latest release](https://github.com/Tempus-superest/EasyISP/releases) of **EasyISP**.
+- Download the [latest release](https://github.com/Tempus-superest/EasyISP/releases) of **EasyISP** or the ZIP from [SpaceDock](https://spacedock.info/mod/4132/EasyISP).
 - Extract the downloaded archive.
 - Copy the `EasyISP` folder into your **KSP** `GameData` directory.
 - Launch **KSP**.
@@ -37,7 +37,7 @@ You can adjust the global **ISP** multiplier to tune overall engine efficiency.
 
 - Open `GameData/EasyISP/EasyISP.cfg`.
 - Find the `EASYISP_SETTINGS` block.
-- Set `ispMultiplier` to scale **ISP** for all targeted engines.
+- Set `ispMultiplier` to scale **ISP** for all engines.
 - Save the file and restart **KSP**.
 
 ## Support
