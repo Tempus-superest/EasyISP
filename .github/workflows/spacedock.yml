@@ -29,7 +29,7 @@ jobs:
           gh release download "$tag" --pattern "$asset"
 
       - name: Upload to SpaceDock
-        uses: KSP2Community/spacedock-upload@v1
+        uses: KSP2Community/spacedock-upload@4f3f4c42e2fa2043614d6f90e1a5da760c01dd3b # v1.0.1
         with:
           username: ${{ secrets.SPACEDOCK_USERNAME }}
           password: ${{ secrets.SPACEDOCK_PASSWORD }}
