@@ -39,8 +39,20 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "::add-mask::$SPACEDOCK_USERNAME"
-echo "::add-mask::$SPACEDOCK_PASSWORD"
+password_encoded="$SPACEDOCK_PASSWORD"
+login_mode="raw"
+encoded_try="$(printf '%s' "$SPACEDOCK_PASSWORD" | jq -sRr @uri 2>/dev/null || true)"
+if [ -n "$encoded_try" ]; then
+  password_encoded="$encoded_try"
+  login_mode="encoded"
+fi
+if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+  echo "::add-mask::$SPACEDOCK_USERNAME"
+  echo "::add-mask::$SPACEDOCK_PASSWORD"
+  if [ "$login_mode" = "encoded" ]; then
+    echo "::add-mask::$password_encoded"
+  fi
+fi
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -58,22 +70,54 @@ base_url="${SPACEDOCK_WEBSITE%/}"
 user_agent="EasyISP-Spacedock-Native/${GITHUB_REPOSITORY:-local}"
 
 echo "Logging in to SpaceDock API..."
-login_http="$(
+login_curl_exit=0
+login_http=""
+login_error="unknown"
+login_reason="none"
+run_login() {
+  local password_value="$1"
   curl -sS -o "$login_json" -w "%{http_code}" \
     -A "$user_agent" \
     -c "$cookies" \
-    -F "username=$SPACEDOCK_USERNAME" \
-    -F "password=$SPACEDOCK_PASSWORD" \
+    --form-string "username=$SPACEDOCK_USERNAME" \
+    --form-string "password=$password_value" \
     "$base_url/api/login"
-)"
+}
+parse_login_json() {
+  login_error="$(
+    jq -r '.error // "unknown"' "$login_json" 2>/dev/null \
+      | tr -d '\r\n' \
+      | tr '[:upper:]' '[:lower:]' \
+      || true
+  )"
+  login_error="${login_error:-unknown}"
+  login_reason="$(
+    jq -r '.reason // "none"' "$login_json" 2>/dev/null \
+      | sanitize_reason \
+      || true
+  )"
+  login_reason="${login_reason:-none}"
+}
+login_succeeded() {
+  [ "$login_curl_exit" -eq 0 ] && [ "$login_http" = "200" ] && [ "$login_error" = "false" ]
+}
 
-login_error="$(jq -r '.error // "unknown"' "$login_json" 2>/dev/null | tr -d '\r\n' || true)"
-login_error="${login_error:-unknown}"
-login_reason="$(jq -r '.reason // "none"' "$login_json" 2>/dev/null | sanitize_reason || true)"
-login_reason="${login_reason:-none}"
+login_http="$(run_login "$password_encoded")" || login_curl_exit=$?
+parse_login_json
 
-if [ "$login_http" != "200" ] || [ "$login_error" != "false" ]; then
-  echo "SpaceDock API login failed (HTTP $login_http): $login_reason" >&2
+if ! login_succeeded && [ "$login_mode" != "raw" ]; then
+  login_mode="raw"
+  login_curl_exit=0
+  login_http="$(run_login "$SPACEDOCK_PASSWORD")" || login_curl_exit=$?
+  parse_login_json
+fi
+
+if ! login_succeeded; then
+  if [ "$login_curl_exit" -ne 0 ]; then
+    echo "SpaceDock API login failed (transport curl_exit_${login_curl_exit}, login_mode=$login_mode)." >&2
+  else
+    echo "SpaceDock API login failed (HTTP $login_http, login_mode=$login_mode): $login_reason" >&2
+  fi
   exit 1
 fi
 

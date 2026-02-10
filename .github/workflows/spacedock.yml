@@ -48,28 +48,55 @@ jobs:
 
           login_json="$RUNNER_TEMP/spacedock-login-preflight.json"
           login_url="$SPACEDOCK_WEBSITE/api/login"
+          password_encoded="$SPACEDOCK_PASSWORD"
+          login_mode="raw"
+          encoded_try="$(printf '%s' "$SPACEDOCK_PASSWORD" | jq -sRr @uri 2>/dev/null || true)"
+          if [ -n "$encoded_try" ]; then
+            password_encoded="$encoded_try"
+            login_mode="encoded"
+            echo "::add-mask::$password_encoded"
+          fi
           curl_exit=0
-          http_code="$(
+          http_code=""
+          api_error="unknown"
+          reason="none"
+          run_login() {
+            local password_value="$1"
             curl -sS -o "$login_json" -w "%{http_code}" \
               -A "EasyISP-Spacedock-Preflight/${GITHUB_REPOSITORY}" \
-              -F "username=$SPACEDOCK_USERNAME" \
-              -F "password=$SPACEDOCK_PASSWORD" \
+              --form-string "username=$SPACEDOCK_USERNAME" \
+              --form-string "password=$password_value" \
               "$login_url"
-          )" || curl_exit=$?
+          }
+          parse_login_json() {
+            reason="$(
+              jq -r '.reason // "none"' "$login_json" 2>/dev/null \
+                | tr '\r\n' ' ' \
+                | sed 's/[^[:print:]]/?/g' \
+                || true
+            )"
+            reason="${reason:-none}"
+            api_error="$(
+              jq -r '.error // "unknown"' "$login_json" 2>/dev/null \
+                | tr -d '\r\n' \
+                | tr '[:upper:]' '[:lower:]' \
+                || true
+            )"
+            api_error="${api_error:-unknown}"
+          }
+          login_succeeded() {
+            [ "$curl_exit" -eq 0 ] && [ "$http_code" = "200" ] && [ "$api_error" = "false" ]
+          }
 
-          reason="$(
-            jq -r '.reason // "none"' "$login_json" 2>/dev/null \
-              | tr '\r\n' ' ' \
-              | sed 's/[^[:print:]]/?/g' \
-              || true
-          )"
-          reason="${reason:-none}"
-          api_error="$(
-            jq -r '.error // "unknown"' "$login_json" 2>/dev/null \
-              | tr -d '\r\n' \
-              || true
-          )"
-          api_error="${api_error:-unknown}"
+          http_code="$(run_login "$password_encoded")" || curl_exit=$?
+          parse_login_json
+
+          if ! login_succeeded && [ "$login_mode" != "raw" ]; then
+            login_mode="raw"
+            curl_exit=0
+            http_code="$(run_login "$SPACEDOCK_PASSWORD")" || curl_exit=$?
+            parse_login_json
+          fi
 
           if [ "$curl_exit" -ne 0 ]; then
             echo "ok=false" >> "$GITHUB_OUTPUT"
@@ -85,12 +112,12 @@ jobs:
             echo "ok=true" >> "$GITHUB_OUTPUT"
             echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
             echo "reason=ok" >> "$GITHUB_OUTPUT"
-            echo "SpaceDock preflight succeeded (HTTP $http_code)."
+            echo "SpaceDock preflight succeeded (HTTP $http_code, login_mode=$login_mode)."
           else
             echo "ok=false" >> "$GITHUB_OUTPUT"
             echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
             echo "reason=$reason" >> "$GITHUB_OUTPUT"
-            echo "SpaceDock preflight reported API error: $reason"
+            echo "SpaceDock preflight reported API error (login_mode=$login_mode): $reason"
           fi
 
       - name: Upload to SpaceDock (native API script)
