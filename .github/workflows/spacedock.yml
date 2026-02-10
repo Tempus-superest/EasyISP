@@ -28,13 +28,97 @@ jobs:
           echo "asset=$asset" >> "$GITHUB_OUTPUT"
           gh release download "$tag" --pattern "$asset"
 
-      - name: Upload to SpaceDock
+      - name: Prepare changelog file
+        id: prepare-changelog
+        run: |
+          changelog_file="$RUNNER_TEMP/spacedock-changelog.txt"
+          printf '%s\n' "${{ github.event.release.body }}" > "$changelog_file"
+          echo "changelog_file=$changelog_file" >> "$GITHUB_OUTPUT"
+
+      - name: SpaceDock API preflight
+        id: preflight
+        env:
+          SPACEDOCK_USERNAME: ${{ secrets.SPACEDOCK_USERNAME }}
+          SPACEDOCK_PASSWORD: ${{ secrets.SPACEDOCK_PASSWORD }}
+          SPACEDOCK_WEBSITE: https://spacedock.info
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$SPACEDOCK_USERNAME"
+          echo "::add-mask::$SPACEDOCK_PASSWORD"
+
+          login_json="$RUNNER_TEMP/spacedock-login-preflight.json"
+          login_url="$SPACEDOCK_WEBSITE/api/login"
+          curl_exit=0
+          http_code="$(
+            curl -sS -o "$login_json" -w "%{http_code}" \
+              -A "EasyISP-Spacedock-Preflight/${GITHUB_REPOSITORY}" \
+              -F "username=$SPACEDOCK_USERNAME" \
+              -F "password=$SPACEDOCK_PASSWORD" \
+              "$login_url"
+          )" || curl_exit=$?
+
+          reason="$(jq -r '.reason // "none"' "$login_json" 2>/dev/null | tr '\r\n' ' ' | sed 's/[^[:print:]]/?/g')"
+          api_error="$(jq -r '.error // "unknown"' "$login_json" 2>/dev/null | tr -d '\r\n')"
+
+          if [ "$curl_exit" -ne 0 ]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "http_code=000" >> "$GITHUB_OUTPUT"
+            echo "reason=curl_exit_${curl_exit}" >> "$GITHUB_OUTPUT"
+            echo "SpaceDock preflight failed (transport): curl_exit_${curl_exit}"
+          elif [ "$http_code" != "200" ]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
+            echo "reason=$reason" >> "$GITHUB_OUTPUT"
+            echo "SpaceDock preflight failed (HTTP $http_code): $reason"
+          elif [ "$api_error" = "false" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
+            echo "reason=ok" >> "$GITHUB_OUTPUT"
+            echo "SpaceDock preflight succeeded (HTTP $http_code)."
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
+            echo "reason=$reason" >> "$GITHUB_OUTPUT"
+            echo "SpaceDock preflight reported API error: $reason"
+          fi
+
+      - name: Upload to SpaceDock (action)
+        id: upload-action
+        continue-on-error: true
         uses: KSP2Community/spacedock-upload@v1.0.1
         with:
           username: ${{ secrets.SPACEDOCK_USERNAME }}
           password: ${{ secrets.SPACEDOCK_PASSWORD }}
+          game_id: ${{ vars.SPACEDOCK_GAME_ID || '3102' }}
           mod_id: ${{ vars.SPACEDOCK_MOD_ID }}
-          ksp_version: ${{ vars.SPACEDOCK_KSP_VERSION }}
           version: ${{ github.event.release.tag_name }}
-          zip_file: ${{ steps.download-asset.outputs.asset }}
-          changelog: ${{ github.event.release.body }}
+          zipball: ${{ steps.download-asset.outputs.asset }}
+          changelog: ${{ steps.prepare-changelog.outputs.changelog_file }}
+          spacedock_website: spacedock.info
+
+      - name: Upload to SpaceDock (fallback API script)
+        id: upload-fallback
+        if: steps.upload-action.outcome == 'failure' && steps.preflight.outputs.ok == 'true'
+        env:
+          SPACEDOCK_USERNAME: ${{ secrets.SPACEDOCK_USERNAME }}
+          SPACEDOCK_PASSWORD: ${{ secrets.SPACEDOCK_PASSWORD }}
+          SPACEDOCK_WEBSITE: https://spacedock.info
+          SPACEDOCK_MOD_ID: ${{ vars.SPACEDOCK_MOD_ID }}
+          SPACEDOCK_GAME_ID: ${{ vars.SPACEDOCK_GAME_ID || '3102' }}
+          SPACEDOCK_VERSION: ${{ github.event.release.tag_name }}
+          SPACEDOCK_ZIPBALL: ${{ steps.download-asset.outputs.asset }}
+          SPACEDOCK_CHANGELOG_FILE: ${{ steps.prepare-changelog.outputs.changelog_file }}
+        run: ./.github/scripts/spacedock_upload.sh
+
+      - name: Fail if SpaceDock upload did not complete
+        if: steps.upload-action.outcome == 'failure' && steps.upload-fallback.outcome != 'success'
+        run: |
+          if [ "${{ steps.preflight.outputs.ok }}" != "true" ]; then
+            echo "SpaceDock upload failed and API preflight did not succeed."
+            echo "This usually indicates bad credentials or an account/API constraint."
+            echo "Preflight HTTP: ${{ steps.preflight.outputs.http_code }}"
+            echo "Preflight reason: ${{ steps.preflight.outputs.reason }}"
+          else
+            echo "SpaceDock upload action failed and fallback upload did not succeed."
+          fi
+          exit 1
