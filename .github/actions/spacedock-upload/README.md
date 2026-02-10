@@ -1,5 +1,5 @@
 # spacedock-upload
-A github action for uploading to spacedock
+A GitHub action for uploading to spacedock
 
 ## EasyISP Vendored Copy
 
