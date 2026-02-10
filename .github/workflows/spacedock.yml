@@ -52,6 +52,9 @@ jobs:
           echo "::add-mask::$password_encoded"
           login_mode="encoded"
           curl_exit=0
+          http_code=""
+          api_error="unknown"
+          reason="none"
           run_login() {
             local password_value="$1"
             curl -sS -o "$login_json" -w "%{http_code}" \
@@ -60,25 +63,35 @@ jobs:
               --form-string "password=$password_value" \
               "$login_url"
           }
-          http_code="$(run_login "$password_encoded")" || curl_exit=$?
-          if [ "$curl_exit" -eq 0 ] && [ "$http_code" = "401" ]; then
-            login_mode="raw"
-            http_code="$(run_login "$SPACEDOCK_PASSWORD")" || curl_exit=$?
-          fi
+          parse_login_json() {
+            reason="$(
+              jq -r '.reason // "none"' "$login_json" 2>/dev/null \
+                | tr '\r\n' ' ' \
+                | sed 's/[^[:print:]]/?/g' \
+                || true
+            )"
+            reason="${reason:-none}"
+            api_error="$(
+              jq -r '.error // "unknown"' "$login_json" 2>/dev/null \
+                | tr -d '\r\n' \
+                | tr '[:upper:]' '[:lower:]' \
+                || true
+            )"
+            api_error="${api_error:-unknown}"
+          }
+          login_succeeded() {
+            [ "$curl_exit" -eq 0 ] && [ "$http_code" = "200" ] && [ "$api_error" = "false" ]
+          }
 
-          reason="$(
-            jq -r '.reason // "none"' "$login_json" 2>/dev/null \
-              | tr '\r\n' ' ' \
-              | sed 's/[^[:print:]]/?/g' \
-              || true
-          )"
-          reason="${reason:-none}"
-          api_error="$(
-            jq -r '.error // "unknown"' "$login_json" 2>/dev/null \
-              | tr -d '\r\n' \
-              || true
-          )"
-          api_error="${api_error:-unknown}"
+          http_code="$(run_login "$password_encoded")" || curl_exit=$?
+          parse_login_json
+
+          if ! login_succeeded; then
+            login_mode="raw"
+            curl_exit=0
+            http_code="$(run_login "$SPACEDOCK_PASSWORD")" || curl_exit=$?
+            parse_login_json
+          fi
 
           if [ "$curl_exit" -ne 0 ]; then
             echo "ok=false" >> "$GITHUB_OUTPUT"

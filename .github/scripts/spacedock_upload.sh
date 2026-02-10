@@ -61,6 +61,10 @@ user_agent="EasyISP-Spacedock-Native/${GITHUB_REPOSITORY:-local}"
 
 echo "Logging in to SpaceDock API..."
 login_mode="encoded"
+login_curl_exit=0
+login_http=""
+login_error="unknown"
+login_reason="none"
 run_login() {
   local password_value="$1"
   curl -sS -o "$login_json" -w "%{http_code}" \
@@ -70,19 +74,41 @@ run_login() {
     --form-string "password=$password_value" \
     "$base_url/api/login"
 }
-login_http="$(run_login "$password_encoded")"
-if [ "$login_http" = "401" ]; then
+parse_login_json() {
+  login_error="$(
+    jq -r '.error // "unknown"' "$login_json" 2>/dev/null \
+      | tr -d '\r\n' \
+      | tr '[:upper:]' '[:lower:]' \
+      || true
+  )"
+  login_error="${login_error:-unknown}"
+  login_reason="$(
+    jq -r '.reason // "none"' "$login_json" 2>/dev/null \
+      | sanitize_reason \
+      || true
+  )"
+  login_reason="${login_reason:-none}"
+}
+login_succeeded() {
+  [ "$login_curl_exit" -eq 0 ] && [ "$login_http" = "200" ] && [ "$login_error" = "false" ]
+}
+
+login_http="$(run_login "$password_encoded")" || login_curl_exit=$?
+parse_login_json
+
+if ! login_succeeded; then
   login_mode="raw"
-  login_http="$(run_login "$SPACEDOCK_PASSWORD")"
+  login_curl_exit=0
+  login_http="$(run_login "$SPACEDOCK_PASSWORD")" || login_curl_exit=$?
+  parse_login_json
 fi
 
-login_error="$(jq -r '.error // "unknown"' "$login_json" 2>/dev/null | tr -d '\r\n' || true)"
-login_error="${login_error:-unknown}"
-login_reason="$(jq -r '.reason // "none"' "$login_json" 2>/dev/null | sanitize_reason || true)"
-login_reason="${login_reason:-none}"
-
-if [ "$login_http" != "200" ] || [ "$login_error" != "false" ]; then
-  echo "SpaceDock API login failed (HTTP $login_http, login_mode=$login_mode): $login_reason" >&2
+if ! login_succeeded; then
+  if [ "$login_curl_exit" -ne 0 ]; then
+    echo "SpaceDock API login failed (transport curl_exit_${login_curl_exit}, login_mode=$login_mode)." >&2
+  else
+    echo "SpaceDock API login failed (HTTP $login_http, login_mode=$login_mode): $login_reason" >&2
+  fi
   exit 1
 fi
 
