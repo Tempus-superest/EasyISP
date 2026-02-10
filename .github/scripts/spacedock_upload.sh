@@ -39,10 +39,12 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "::add-mask::$SPACEDOCK_USERNAME"
-echo "::add-mask::$SPACEDOCK_PASSWORD"
 password_encoded="$(printf '%s' "$SPACEDOCK_PASSWORD" | jq -sRr @uri)"
-echo "::add-mask::$password_encoded"
+if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+  echo "::add-mask::$SPACEDOCK_USERNAME"
+  echo "::add-mask::$SPACEDOCK_PASSWORD"
+  echo "::add-mask::$password_encoded"
+fi
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
