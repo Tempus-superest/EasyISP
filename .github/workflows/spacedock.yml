@@ -1,0 +1,40 @@
+name: SpaceDock upload
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    if: github.repository == 'Tempus-superest/EasyISP'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download release asset
+        id: download-asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          version="${tag#v}"
+          asset="EasyISP-v${version}.zip"
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+          gh release download "$tag" --pattern "$asset"
+
+      - name: Upload to SpaceDock
+        uses: KSP2Community/spacedock-upload@v1
+        with:
+          username: ${{ secrets.SPACEDOCK_USERNAME }}
+          password: ${{ secrets.SPACEDOCK_PASSWORD }}
+          mod_id: ${{ vars.SPACEDOCK_MOD_ID }}
+          ksp_version: ${{ vars.SPACEDOCK_KSP_VERSION }}
+          version: ${{ github.event.release.tag_name }}
+          zip_file: ${{ steps.download-asset.outputs.asset }}
+          changelog: ${{ github.event.release.body }}
