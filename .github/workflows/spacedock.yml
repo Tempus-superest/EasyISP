@@ -48,20 +48,25 @@ jobs:
 
           login_json="$RUNNER_TEMP/spacedock-login-preflight.json"
           login_headers="$RUNNER_TEMP/spacedock-login-preflight.headers"
+          login_metrics="$RUNNER_TEMP/spacedock-login-preflight.metrics"
           login_url="$SPACEDOCK_WEBSITE/api/login"
           curl_exit=0
-          http_code="$(
-            curl -sS -L -D "$login_headers" -o "$login_json" -w "%{http_code}" \
+          # Use --form-string so credentials are sent literally; -F can treat
+          # leading @/< as file syntax and break auth for edge-case secrets.
+          curl -sS -L -D "$login_headers" -o "$login_json" -w "%{http_code}\n%{url_effective}" \
               -A "EasyISP-Spacedock-Preflight/${GITHUB_REPOSITORY}" \
-              -F "username=$SPACEDOCK_USERNAME" \
-              -F "password=$SPACEDOCK_PASSWORD" \
+              --form-string "username=$SPACEDOCK_USERNAME" \
+              --form-string "password=$SPACEDOCK_PASSWORD" \
               "$login_url"
-          )" || curl_exit=$?
+          > "$login_metrics" || curl_exit=$?
+
+          http_code="$(sed -n '1p' "$login_metrics" | tr -d '\r\n' || true)"
+          http_code="${http_code:-000}"
+          final_url="$(sed -n '2p' "$login_metrics" | tr -d '\r\n' || true)"
+          final_url="${final_url:-$login_url}"
 
           content_type="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {sub(/\r$/,"",$0); sub(/^content-type:[[:space:]]*/,"",$0); last=$0} END{if (last!="") print last}' "$login_headers" || true)"
           content_type="${content_type:-unknown}"
-          final_url="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/\r$/,"",$0); sub(/^location:[[:space:]]*/,"",$0); last=$0} END{if (last!="") print last}' "$login_headers" || true)"
-          final_url="${final_url:-$login_url}"
 
           reason="none"
           api_error="unknown"

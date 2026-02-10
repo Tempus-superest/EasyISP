@@ -50,6 +50,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 cookies="$tmp_dir/cookies.txt"
 login_json="$tmp_dir/login.json"
 login_headers="$tmp_dir/login.headers"
+login_metrics="$tmp_dir/login.metrics"
 versions_json="$tmp_dir/versions.json"
 update_json="$tmp_dir/update.json"
 
@@ -62,19 +63,23 @@ user_agent="EasyISP-Spacedock-Native/${GITHUB_REPOSITORY:-local}"
 
 echo "Logging in to SpaceDock API..."
 login_curl_exit=0
-login_http="$(
-  curl -sS -L -D "$login_headers" -o "$login_json" -w "%{http_code}" \
-    -A "$user_agent" \
-    -c "$cookies" \
-    -F "username=$SPACEDOCK_USERNAME" \
-    -F "password=$SPACEDOCK_PASSWORD" \
-    "$base_url/api/login"
-)" || login_curl_exit=$?
+# Use --form-string so credentials are sent literally; -F can treat
+# leading @/< as file syntax and break auth for edge-case secrets.
+curl -sS -L -D "$login_headers" -o "$login_json" -w "%{http_code}\n%{url_effective}" \
+  -A "$user_agent" \
+  -c "$cookies" \
+  --form-string "username=$SPACEDOCK_USERNAME" \
+  --form-string "password=$SPACEDOCK_PASSWORD" \
+  "$base_url/api/login" \
+> "$login_metrics" || login_curl_exit=$?
+
+login_http="$(sed -n '1p' "$login_metrics" | tr -d '\r\n' || true)"
+login_http="${login_http:-000}"
+final_url="$(sed -n '2p' "$login_metrics" | tr -d '\r\n' || true)"
+final_url="${final_url:-$base_url/api/login}"
 
 login_content_type="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {sub(/\r$/,"",$0); sub(/^content-type:[[:space:]]*/,"",$0); last=$0} END{if (last!="") print last}' "$login_headers" || true)"
 login_content_type="${login_content_type:-unknown}"
-final_url="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/\r$/,"",$0); sub(/^location:[[:space:]]*/,"",$0); last=$0} END{if (last!="") print last}' "$login_headers" || true)"
-final_url="${final_url:-$base_url/api/login}"
 
 login_error="unknown"
 login_reason="none"
