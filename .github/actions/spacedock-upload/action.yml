@@ -1,6 +1,8 @@
 # Vendored from https://github.com/KSP2Community/spacedock-upload (v1.0.1 lineage).
 # Local patch required for reliable secret handling with shell metacharacters:
 # https://github.com/KSP2Community/spacedock-upload/issues/2
+# Important: do not URL-encode password for /api/login here; SpaceDock login expects
+# literal multipart form fields and local curl auth succeeds with raw password.
 # Do not replace with upstream action reference until upstream fix is verified.
 name: 'Spacedock Upload'
 description: 'Upload to spacedock, requires JQ already installed'
@@ -48,16 +50,17 @@ runs:
   using: "composite"
   steps:
     - name: Add mask (again to be sure)
-      run: echo "::add-mask::${{ inputs.password }}"
+      run: |
+        echo "::add-mask::${{ inputs.username }}"
+        echo "::add-mask::${{ inputs.password }}"
       shell: bash
     - name: Log in to spacedock
       env:
+        USERNAME: ${{ inputs.username }}
         PASSWORD: ${{ inputs.password }}
       run: |
         set -euo pipefail
-        encoded_password=$(printf '%s' "$PASSWORD" | jq -sRr @uri)
-        echo "::add-mask::$encoded_password"
-        login_response=$(curl -F "username=${{ inputs.username }}" -F "password=$encoded_password" -c ./cookies "https://${{ inputs.spacedock_website }}/api/login")
+        login_response=$(curl --silent --show-error --form-string "username=$USERNAME" --form-string "password=$PASSWORD" -c ./cookies "https://${{ inputs.spacedock_website }}/api/login")
         login_errored=$(echo "$login_response" | jq -r '.error // "unknown"')
         if [ "$login_errored" == "true" ]; then
           echo "Login to space dock errored: $(echo "$login_response" | jq -r '.reason // "unknown"')"

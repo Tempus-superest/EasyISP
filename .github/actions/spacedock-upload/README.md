@@ -15,8 +15,8 @@ Why vendored:
 
 Local patch summary:
 
-- Quote password interpolation used for URI encoding in login.
-- Preserve literal-safe handling through the login curl path.
+- Send login credentials literally with multipart `--form-string` fields.
+- Do not URL-encode password for `/api/login`; SpaceDock auth expects raw password values.
 - Accept changelog as direct string content (not a filename path) so workflow can pass `github.event.release.body` directly.
 
 Maintenance note:
