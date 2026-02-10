@@ -57,8 +57,19 @@ jobs:
               "$login_url"
           )" || curl_exit=$?
 
-          reason="$(jq -r '.reason // "none"' "$login_json" 2>/dev/null | tr '\r\n' ' ' | sed 's/[^[:print:]]/?/g')"
-          api_error="$(jq -r '.error // "unknown"' "$login_json" 2>/dev/null | tr -d '\r\n')"
+          reason="$(
+            jq -r '.reason // "none"' "$login_json" 2>/dev/null \
+              | tr '\r\n' ' ' \
+              | sed 's/[^[:print:]]/?/g' \
+              || true
+          )"
+          reason="${reason:-none}"
+          api_error="$(
+            jq -r '.error // "unknown"' "$login_json" 2>/dev/null \
+              | tr -d '\r\n' \
+              || true
+          )"
+          api_error="${api_error:-unknown}"
 
           if [ "$curl_exit" -ne 0 ]; then
             echo "ok=false" >> "$GITHUB_OUTPUT"

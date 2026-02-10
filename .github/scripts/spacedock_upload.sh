@@ -67,8 +67,10 @@ login_http="$(
     "$base_url/api/login"
 )"
 
-login_error="$(jq -r '.error // "unknown"' "$login_json" 2>/dev/null | tr -d '\r\n')"
-login_reason="$(jq -r '.reason // "none"' "$login_json" 2>/dev/null | sanitize_reason)"
+login_error="$(jq -r '.error // "unknown"' "$login_json" 2>/dev/null | tr -d '\r\n' || true)"
+login_error="${login_error:-unknown}"
+login_reason="$(jq -r '.reason // "none"' "$login_json" 2>/dev/null | sanitize_reason || true)"
+login_reason="${login_reason:-none}"
 
 if [ "$login_http" != "200" ] || [ "$login_error" != "false" ]; then
   echo "SpaceDock API login failed (HTTP $login_http): $login_reason" >&2
@@ -82,7 +84,7 @@ versions_http="$(
     "$base_url/api/$SPACEDOCK_GAME_ID/versions"
 )"
 
-latest_game_version="$(jq -r '.[0].friendly_version // empty' "$versions_json" 2>/dev/null)"
+latest_game_version="$(jq -r '.[0].friendly_version // empty' "$versions_json" 2>/dev/null || true)"
 if [ "$versions_http" != "200" ] || [ -z "$latest_game_version" ]; then
   echo "Could not determine latest game version (HTTP $versions_http)." >&2
   exit 1
@@ -101,8 +103,10 @@ update_http="$(
     "$base_url/api/mod/$SPACEDOCK_MOD_ID/update"
 )"
 
-update_error="$(jq -r '.error // "unknown"' "$update_json" 2>/dev/null | tr -d '\r\n')"
-update_reason="$(jq -r '.reason // "none"' "$update_json" 2>/dev/null | sanitize_reason)"
+update_error="$(jq -r '.error // "unknown"' "$update_json" 2>/dev/null | tr -d '\r\n' || true)"
+update_error="${update_error:-unknown}"
+update_reason="$(jq -r '.reason // "none"' "$update_json" 2>/dev/null | sanitize_reason || true)"
+update_reason="${update_reason:-none}"
 
 if [ "$update_http" != "200" ] || [ "$update_error" != "false" ]; then
   echo "SpaceDock upload failed (HTTP $update_http): $update_reason" >&2
