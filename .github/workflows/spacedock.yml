@@ -48,14 +48,23 @@ jobs:
 
           login_json="$RUNNER_TEMP/spacedock-login-preflight.json"
           login_url="$SPACEDOCK_WEBSITE/api/login"
+          password_encoded="$(printf '%s' "$SPACEDOCK_PASSWORD" | jq -sRr @uri)"
+          echo "::add-mask::$password_encoded"
+          login_mode="encoded"
           curl_exit=0
-          http_code="$(
+          run_login() {
+            local password_value="$1"
             curl -sS -o "$login_json" -w "%{http_code}" \
               -A "EasyISP-Spacedock-Preflight/${GITHUB_REPOSITORY}" \
-              -F "username=$SPACEDOCK_USERNAME" \
-              -F "password=$SPACEDOCK_PASSWORD" \
+              --form-string "username=$SPACEDOCK_USERNAME" \
+              --form-string "password=$password_value" \
               "$login_url"
-          )" || curl_exit=$?
+          }
+          http_code="$(run_login "$password_encoded")" || curl_exit=$?
+          if [ "$curl_exit" -eq 0 ] && [ "$http_code" = "401" ]; then
+            login_mode="raw"
+            http_code="$(run_login "$SPACEDOCK_PASSWORD")" || curl_exit=$?
+          fi
 
           reason="$(
             jq -r '.reason // "none"' "$login_json" 2>/dev/null \
@@ -85,12 +94,12 @@ jobs:
             echo "ok=true" >> "$GITHUB_OUTPUT"
             echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
             echo "reason=ok" >> "$GITHUB_OUTPUT"
-            echo "SpaceDock preflight succeeded (HTTP $http_code)."
+            echo "SpaceDock preflight succeeded (HTTP $http_code, login_mode=$login_mode)."
           else
             echo "ok=false" >> "$GITHUB_OUTPUT"
             echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
             echo "reason=$reason" >> "$GITHUB_OUTPUT"
-            echo "SpaceDock preflight reported API error: $reason"
+            echo "SpaceDock preflight reported API error (login_mode=$login_mode): $reason"
           fi
 
       - name: Upload to SpaceDock (native API script)
