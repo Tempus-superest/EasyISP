@@ -5,7 +5,7 @@
 EasyISP release automation has two workflows:
 
 - `.github/workflows/release.yml` runs on every push to `main`. It determines `vX.Y.Z` from `EasyISP.version`, validates metadata, builds `EasyISP-vX.Y.Z.zip`, creates/updates the matching GitHub Release, and uploads the ZIP asset.
-- `.github/workflows/spacedock.yml` runs only on `release: published`. It downloads the GitHub release ZIP and publishes it to SpaceDock via `KSP2Community/spacedock-upload@v1.0.1`.
+- `.github/workflows/spacedock.yml` runs only on `release: published`. It downloads the GitHub release ZIP and publishes it to SpaceDock via a vendored local action at `.github/actions/spacedock-upload`.
 
 ## Required Version Consistency
 
@@ -60,14 +60,21 @@ Trigger:
 Process:
 
 1. Download `EasyISP-vX.Y.Z.zip` from the published GitHub Release tag.
-2. Write `github.event.release.body` to a temporary changelog file.
-3. Run `KSP2Community/spacedock-upload@v1.0.1` with:
+2. Run local action `./.github/actions/spacedock-upload` with:
    - SpaceDock credentials (`SPACEDOCK_USERNAME`, `SPACEDOCK_PASSWORD`)
    - mod/game IDs (`SPACEDOCK_MOD_ID`, `SPACEDOCK_GAME_ID`)
    - Git tag version (`vX.Y.Z`)
    - downloaded ZIP path as `zipball`
-   - prepared changelog file path
+   - changelog content from `github.event.release.body`
    - `spacedock_website: spacedock.info`
+3. The local action handles login/upload and fails the job on SpaceDock auth/API errors.
+
+### Why the action is vendored
+
+- Upstream action repository: https://github.com/KSP2Community/spacedock-upload
+- Upstream issue showing auth breakage from unquoted secret expansion: https://github.com/KSP2Community/spacedock-upload/issues/2
+- EasyISP previously pinned upstream `v1.0.1`, then vendored and patched locally for literal-safe password handling.
+- Do not switch back to upstream in the workflow until an upstream fix is released and verified with special-character secrets.
 
 ## SpaceDock Configuration
 
