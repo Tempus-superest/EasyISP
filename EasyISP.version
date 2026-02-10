@@ -1,11 +1,11 @@
 {
     "NAME": "EasyISP",
     "URL": "https://raw.githubusercontent.com/Tempus-superest/EasyISP/main/EasyISP.version",
-    "DOWNLOAD": "https://github.com/Tempus-superest/EasyISP/releases/tag/v1.2.3",
+    "DOWNLOAD": "https://github.com/Tempus-superest/EasyISP/releases/tag/v1.2.4",
     "VERSION": {
         "MAJOR": 1,
         "MINOR": 2,
-        "PATCH": 3
+        "PATCH": 4
     },
     "KSP_VERSION": {
         "MAJOR": 1,
