@@ -55,9 +55,9 @@ sanitize_reason() {
 }
 
 base_url="${SPACEDOCK_WEBSITE%/}"
-user_agent="EasyISP-Spacedock-Fallback/${GITHUB_REPOSITORY:-local}"
+user_agent="EasyISP-Spacedock-Native/${GITHUB_REPOSITORY:-local}"
 
-echo "Logging in to SpaceDock API (fallback uploader)..."
+echo "Logging in to SpaceDock API..."
 login_http="$(
   curl -sS -o "$login_json" -w "%{http_code}" \
     -A "$user_agent" \
@@ -71,7 +71,7 @@ login_error="$(jq -r '.error // "unknown"' "$login_json" 2>/dev/null | tr -d '\r
 login_reason="$(jq -r '.reason // "none"' "$login_json" 2>/dev/null | sanitize_reason)"
 
 if [ "$login_http" != "200" ] || [ "$login_error" != "false" ]; then
-  echo "SpaceDock API login failed in fallback uploader (HTTP $login_http): $login_reason" >&2
+  echo "SpaceDock API login failed (HTTP $login_http): $login_reason" >&2
   exit 1
 fi
 
@@ -105,8 +105,8 @@ update_error="$(jq -r '.error // "unknown"' "$update_json" 2>/dev/null | tr -d '
 update_reason="$(jq -r '.reason // "none"' "$update_json" 2>/dev/null | sanitize_reason)"
 
 if [ "$update_http" != "200" ] || [ "$update_error" != "false" ]; then
-  echo "SpaceDock fallback upload failed (HTTP $update_http): $update_reason" >&2
+  echo "SpaceDock upload failed (HTTP $update_http): $update_reason" >&2
   exit 1
 fi
 
-echo "SpaceDock fallback upload succeeded."
+echo "SpaceDock upload succeeded."

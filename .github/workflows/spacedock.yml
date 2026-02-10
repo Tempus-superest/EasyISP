@@ -82,23 +82,8 @@ jobs:
             echo "SpaceDock preflight reported API error: $reason"
           fi
 
-      - name: Upload to SpaceDock (action)
-        id: upload-action
-        continue-on-error: true
-        uses: KSP2Community/spacedock-upload@v1.0.1
-        with:
-          username: ${{ secrets.SPACEDOCK_USERNAME }}
-          password: ${{ secrets.SPACEDOCK_PASSWORD }}
-          game_id: ${{ vars.SPACEDOCK_GAME_ID || '3102' }}
-          mod_id: ${{ vars.SPACEDOCK_MOD_ID }}
-          version: ${{ github.event.release.tag_name }}
-          zipball: ${{ steps.download-asset.outputs.asset }}
-          changelog: ${{ steps.prepare-changelog.outputs.changelog_file }}
-          spacedock_website: spacedock.info
-
-      - name: Upload to SpaceDock (fallback API script)
-        id: upload-fallback
-        if: steps.upload-action.outcome == 'failure' && steps.preflight.outputs.ok == 'true'
+      - name: Upload to SpaceDock (native API script)
+        if: steps.preflight.outputs.ok == 'true'
         env:
           SPACEDOCK_USERNAME: ${{ secrets.SPACEDOCK_USERNAME }}
           SPACEDOCK_PASSWORD: ${{ secrets.SPACEDOCK_PASSWORD }}
@@ -110,15 +95,11 @@ jobs:
           SPACEDOCK_CHANGELOG_FILE: ${{ steps.prepare-changelog.outputs.changelog_file }}
         run: ./.github/scripts/spacedock_upload.sh
 
-      - name: Fail if SpaceDock upload did not complete
-        if: steps.upload-action.outcome == 'failure' && steps.upload-fallback.outcome != 'success'
+      - name: Fail if preflight did not pass
+        if: steps.preflight.outputs.ok != 'true'
         run: |
-          if [ "${{ steps.preflight.outputs.ok }}" != "true" ]; then
-            echo "SpaceDock upload failed and API preflight did not succeed."
-            echo "This usually indicates bad credentials or an account/API constraint."
-            echo "Preflight HTTP: ${{ steps.preflight.outputs.http_code }}"
-            echo "Preflight reason: ${{ steps.preflight.outputs.reason }}"
-          else
-            echo "SpaceDock upload action failed and fallback upload did not succeed."
-          fi
+          echo "SpaceDock upload skipped because API preflight did not succeed."
+          echo "This usually indicates bad credentials or an account/API constraint."
+          echo "Preflight HTTP: ${{ steps.preflight.outputs.http_code }}"
+          echo "Preflight reason: ${{ steps.preflight.outputs.reason }}"
           exit 1
