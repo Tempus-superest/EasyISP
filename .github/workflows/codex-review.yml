@@ -32,14 +32,17 @@ jobs:
             const headSha = pr.head.sha;
             const marker = `<!-- codex-review:${headSha} -->`;
 
-            const { data: comments } = await github.rest.issues.listComments({
-              owner,
-              repo,
-              issue_number,
-              per_page: 100
-            });
+            const allComments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner,
+                repo,
+                issue_number,
+                per_page: 100
+              }
+            );
 
-            const alreadyRequested = comments.some((comment) =>
+            const alreadyRequested = allComments.some((comment) =>
               typeof comment.body === "string" && comment.body.includes(marker)
             );
 
