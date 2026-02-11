@@ -1,6 +1,6 @@
 # EasyISP - A Mod for Kerbal Space Program
 
-Current Version - [v1.2.4](https://github.com/Tempus-superest/EasyISP/releases/tag/v1.2.4)
+Current Version - [v1.3.0](https://github.com/Tempus-superest/EasyISP/releases/tag/v1.3.0)
 
 **EasyISP** is a **KSP** add-on that increases engine efficiency so your rockets can go farther on the same amount of fuel. In **KSP**, higher **ISP** means you get more delta-v from a single tank. **EasyISP** applies **ModuleManager** patches that edit the **atmosphereCurve** on each targeted **Engine module** (including **ModuleEngines** and **ModuleEnginesFX**), applying a predictable global **ISP** multiplier while keeping each engine’s curve shape and relative behavior intact. The default **ISP** multiplier applied by **EasyISP** is `2`.
 
@@ -13,6 +13,7 @@ Tune **ISP** down for a tougher career, up for a more relaxed game, or push into
 - Applies a global **ISP** adjustment across engine **atmosphereCurve** data.
 - Modifies each targeted **Engine module** (covers **ModuleEngines** and **ModuleEnginesFX**) via **ModuleManager**.
 - Scales all engines **ISP** uniformly while preserving their relative performance profile.
+- Supports B9PartSwitch engine subtypes. Stored engine configs are scaled so switching modes preserves the EasyISP multiplier.
 - No in-game UI required; effects apply automatically on game load.
 - Uses ModuleManager `:FINAL` pass so the multiplier is applied last after other mods.
 
