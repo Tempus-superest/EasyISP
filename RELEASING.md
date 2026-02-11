@@ -7,6 +7,8 @@ EasyISP release automation has two workflows:
 - `.github/workflows/release.yml` runs on every push to `main`. It determines `vX.Y.Z` from `EasyISP.version`, validates metadata, builds `EasyISP-vX.Y.Z.zip`, creates/updates the matching GitHub Release, and uploads the ZIP asset.
 - `.github/workflows/spacedock.yml` runs only on `release: published`. It downloads the GitHub release ZIP and publishes it to SpaceDock via a vendored local action at `.github/actions/spacedock-upload`.
 
+Codex review is requested automatically on PR open and on new pushes; no manual `@codex` comment needed.
+
 ## Required Version Consistency
 
 For every version bump, all of the following must stay aligned:
