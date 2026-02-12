@@ -25,68 +25,76 @@ permissions:
   issues: read
 
 jobs:
-  rerun-codex-gate:
-    name: rerun-codex-gate
-    if: github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.login == 'chatgpt-codex-connector[bot]'
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    steps:
-      - name: Re-run PR-targeted Codex gate
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const pullNumber = context.issue.number;
-
-            const runs = await github.paginate(
-              github.rest.actions.listWorkflowRunsForWorkflow,
-              {
-                owner,
-                repo,
-                workflow_id: "codex-gate.yml",
-                event: "pull_request_target",
-                per_page: 100
-              }
-            );
-
-            const targetRun = runs.find(
-              (run) =>
-                run.status === "completed" &&
-                (run.pull_requests ?? []).some((pr) => pr.number === pullNumber)
-            );
-
-            if (!targetRun) {
-              core.info(
-                `No completed pull_request_target run found for PR #${pullNumber}; nothing to rerun.`
-              );
-              return;
-            }
-
-            await github.rest.actions.reRunWorkflow({
-              owner,
-              repo,
-              run_id: targetRun.id
-            });
-
-            core.info(
-              `Requested rerun of pull_request_target gate run ${targetRun.id} for PR #${pullNumber}.`
-            );
-
   codex-review-fresh:
     name: codex-review-fresh
-    if: github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
       issues: read
+      actions: write
     steps:
       - name: Evaluate Codex review gate
         uses: actions/github-script@v7
         with:
           script: |
             const codexLogin = "chatgpt-codex-connector[bot]";
+            const eventName = context.eventName;
+
+            if (eventName === "issue_comment") {
+              const isPullRequestComment = Boolean(context.payload.issue?.pull_request);
+              const isCodexComment =
+                context.payload.comment?.user?.login === codexLogin;
+
+              if (!isPullRequestComment || !isCodexComment) {
+                core.info("Ignoring issue_comment event that is not a Codex PR comment.");
+                return;
+              }
+
+              const owner = context.repo.owner;
+              const repo = context.repo.repo;
+              const pullNumber = context.payload.issue.number;
+
+              const runs = await github.paginate(
+                github.rest.actions.listWorkflowRunsForWorkflow,
+                {
+                  owner,
+                  repo,
+                  workflow_id: "codex-gate.yml",
+                  event: "pull_request_target",
+                  per_page: 100
+                }
+              );
+
+              const targetRun = runs.find(
+                (run) =>
+                  (run.pull_requests ?? []).some((pr) => pr.number === pullNumber)
+              );
+
+              if (!targetRun) {
+                core.info(
+                  `No pull_request_target gate run found for PR #${pullNumber}; nothing to rerun.`
+                );
+                return;
+              }
+
+              if (targetRun.status !== "completed") {
+                core.info(
+                  `Latest pull_request_target gate run ${targetRun.id} is still ${targetRun.status}; skipping rerun.`
+                );
+                return;
+              }
+
+              await github.rest.actions.reRunWorkflow({
+                owner,
+                repo,
+                run_id: targetRun.id
+              });
+
+              core.info(
+                `Requested rerun of pull_request_target gate run ${targetRun.id} for PR #${pullNumber}.`
+              );
+              return;
+            }
 
             function parsePullRequestUrl(url) {
               if (typeof url !== "string") {
