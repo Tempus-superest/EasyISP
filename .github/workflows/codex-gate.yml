@@ -12,9 +12,12 @@ on:
       - submitted
       - edited
       - dismissed
+  issue_comment:
+    types:
+      - created
 
 concurrency:
-  group: codex-gate-${{ github.repository }}-${{ github.event.pull_request.number || github.event.review.pull_request_url || github.run_id }}
+  group: codex-gate-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number || github.event.review.pull_request_url || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -24,6 +27,7 @@ permissions:
 jobs:
   codex-review-fresh:
     name: codex-review-fresh
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
     runs-on: ubuntu-latest
     steps:
       - name: Evaluate Codex review gate
