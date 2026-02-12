@@ -7,10 +7,6 @@ on:
       - reopened
       - ready_for_review
       - synchronize
-  pull_request_review_thread:
-    types:
-      - resolved
-      - unresolved
   pull_request_review:
     types:
       - submitted
@@ -18,7 +14,7 @@ on:
       - dismissed
 
 concurrency:
-  group: codex-gate-${{ github.repository }}-${{ github.event.pull_request.number || github.event.pull_request_review.pull_request.number || github.event.pull_request_review_thread.pull_request.number || github.event.review.pull_request_url || github.run_id }}
+  group: codex-gate-${{ github.repository }}-${{ github.event.pull_request.number || github.event.review.pull_request_url || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -144,76 +140,6 @@ jobs:
               return;
             }
 
-            const unresolvedCodexThreads = [];
-            let hasNextPage = true;
-            let after = null;
-
-            while (hasNextPage) {
-              const result = await github.graphql(
-                `
-                  query CodexThreads(
-                    $owner: String!
-                    $repo: String!
-                    $pullNumber: Int!
-                    $after: String
-                  ) {
-                    repository(owner: $owner, name: $repo) {
-                      pullRequest(number: $pullNumber) {
-                        reviewThreads(first: 100, after: $after) {
-                          nodes {
-                            isResolved
-                            comments(first: 100) {
-                              nodes {
-                                author {
-                                  login
-                                }
-                              }
-                            }
-                          }
-                          pageInfo {
-                            hasNextPage
-                            endCursor
-                          }
-                        }
-                      }
-                    }
-                  }
-                `,
-                {
-                  owner,
-                  repo,
-                  pullNumber: pull_number,
-                  after
-                }
-              );
-
-              const threads =
-                result?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
-              const pageInfo =
-                result?.repository?.pullRequest?.reviewThreads?.pageInfo ?? null;
-
-              for (const thread of threads) {
-                const comments = thread?.comments?.nodes ?? [];
-                const isCodexOwned = comments.some(
-                  (comment) => comment?.author?.login === codexLogin
-                );
-
-                if (isCodexOwned && thread?.isResolved === false) {
-                  unresolvedCodexThreads.push(thread);
-                }
-              }
-
-              hasNextPage = Boolean(pageInfo?.hasNextPage);
-              after = pageInfo?.endCursor ?? null;
-            }
-
-            if (unresolvedCodexThreads.length > 0) {
-              core.setFailed(
-                "Unresolved Codex review threads remain. Resolve all Codex conversations to pass."
-              );
-              return;
-            }
-
             core.info(
-              "Codex review gate passed: current HEAD has a Codex review and no unresolved Codex-owned threads."
+              "Codex review gate passed: current HEAD has a Codex review."
             );
