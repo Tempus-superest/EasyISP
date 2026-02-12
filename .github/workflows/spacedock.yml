@@ -33,6 +33,7 @@ jobs:
         # https://github.com/KSP2Community/spacedock-upload (previously pinned to v1.0.1)
         # Upstream quoting bug evidence:
         # https://github.com/KSP2Community/spacedock-upload/issues/2
+        # Keep raw multipart credential handling; URL-encoding username/password breaks login.
         # Do not switch back to upstream until fixed there and re-verified with metacharacter secrets.
         uses: ./.github/actions/spacedock-upload
         with:

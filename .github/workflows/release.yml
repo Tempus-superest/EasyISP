@@ -4,127 +4,264 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 jobs:
-  release:
+  precheck:
     runs-on: ubuntu-latest
     env:
-      RELEASE_MODE: ${{ vars.RELEASE_MODE }}
+      RELEASE_MODE_VAR: ${{ vars.RELEASE_MODE }}
+    outputs:
+      tag: ${{ steps.version.outputs.TAG }}
+      version: ${{ steps.version.outputs.VERSION }}
+      release_mode: ${{ steps.mode.outputs.release_mode }}
+      version_changed: ${{ steps.change.outputs.version_changed }}
+      tag_exists: ${{ steps.overlap.outputs.tag_exists }}
+      release_exists: ${{ steps.overlap.outputs.release_exists }}
+      should_release: ${{ steps.decision.outputs.should_release }}
+      skip_reason: ${{ steps.decision.outputs.skip_reason }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Determine version
+      - name: Determine version from VERSION file
         id: version
         run: bash .github/scripts/get-version.sh
+
+      - name: Validate release mode
+        id: mode
+        run: |
+          mode="${RELEASE_MODE_VAR:-draft}"
+          if [[ "$mode" != "draft" && "$mode" != "publish" ]]; then
+            echo "Invalid RELEASE_MODE '$mode'; allowed values are 'draft' or 'publish'" >&2
+            exit 1
+          fi
+          echo "release_mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "Release mode: $mode"
+
+      - name: Detect VERSION change
+        id: change
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "Manual dispatch: allowing release flow without VERSION diff gate."
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$EVENT_NAME" != "push" ]]; then
+            echo "Event '$EVENT_NAME' is treated as version-changed."
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ -z "${BEFORE_SHA:-}" || "$BEFORE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+            echo "No valid push base commit; treating VERSION as changed."
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            echo "Push base commit $BEFORE_SHA is unavailable locally; treating VERSION as changed."
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --name-only "$BEFORE_SHA" "$HEAD_SHA" -- VERSION | grep -Fxq "VERSION"; then
+            echo "VERSION changed in push range $BEFORE_SHA..$HEAD_SHA."
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "VERSION unchanged in push range $BEFORE_SHA..$HEAD_SHA."
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Fetch tags
         run: git fetch --tags
 
-      - name: Check for existing tag/release
-        id: tag_check
+      - name: Check for existing tag or release
+        id: overlap
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.TAG }}
         run: |
-          # Allow retries when packaging/upload fails after tag creation.
-          tag="${{ steps.version.outputs.TAG }}"
-          if git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
-            echo "Tag $tag already exists; verifying release is present for retry."
-            if ! gh release view "$tag" >/dev/null 2>&1; then
-              echo "Tag $tag exists but no GitHub release found." >&2
-              exit 1
-            fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
             echo "tag_exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "tag_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Validate DOWNLOAD URL
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decide whether release should run
+        id: decision
+        env:
+          VERSION_CHANGED: ${{ steps.change.outputs.version_changed }}
+          TAG_EXISTS: ${{ steps.overlap.outputs.tag_exists }}
+          RELEASE_EXISTS: ${{ steps.overlap.outputs.release_exists }}
         run: |
-          # Enforce that EasyISP.version points at the exact release tag URL.
-          tag="${{ steps.version.outputs.TAG }}"
-          python3 - "$tag" <<'PY'
-          import json
-          import pathlib
-          import sys
+          should_release="false"
+          skip_reason="unknown"
 
-          path = pathlib.Path("EasyISP.version")
-          try:
-              data = json.loads(path.read_text())
-          except Exception as exc:
-              raise SystemExit(f"Error reading EasyISP.version: {exc}")
+          if [[ "$VERSION_CHANGED" != "true" ]]; then
+            skip_reason="no_version_change"
+          elif [[ "$TAG_EXISTS" == "true" ]]; then
+            skip_reason="tag_exists"
+          elif [[ "$RELEASE_EXISTS" == "true" ]]; then
+            skip_reason="release_exists"
+          else
+            should_release="true"
+            skip_reason="ready"
+          fi
 
-          download = data.get("DOWNLOAD")
-          if not isinstance(download, str):
-              raise SystemExit("Error: DOWNLOAD field missing or invalid in EasyISP.version")
-          expected = f"https://github.com/Tempus-superest/EasyISP/releases/tag/{sys.argv[1]}"
-          if download != expected:
-              raise SystemExit(f"DOWNLOAD must equal {expected}, got {download}")
-          print("DOWNLOAD field matches expected release tag")
-          PY
+          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+          echo "skip_reason=$skip_reason" >> "$GITHUB_OUTPUT"
+          echo "Precheck result: should_release=$should_release skip_reason=$skip_reason"
+
+  no_release:
+    needs: precheck
+    if: needs.precheck.outputs.should_release != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain no-op result
+        run: |
+          reason="${{ needs.precheck.outputs.skip_reason }}"
+          case "$reason" in
+            no_version_change)
+              echo "No version change; skipping release."
+              ;;
+            tag_exists)
+              echo "Tag ${{ needs.precheck.outputs.tag }} already exists; skipping to avoid overlap."
+              ;;
+            release_exists)
+              echo "Release ${{ needs.precheck.outputs.tag }} already exists; skipping to avoid overlap."
+              ;;
+            *)
+              echo "Skipping release (reason=$reason)."
+              ;;
+          esac
+
+  release:
+    needs: precheck
+    if: needs.precheck.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.precheck.outputs.tag }}
+      VERSION: ${{ needs.precheck.outputs.version }}
+      RELEASE_MODE: ${{ needs.precheck.outputs.release_mode }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync versioned files from VERSION
+        run: bash scripts/sync-version.sh
+
+      - name: Commit synced files when needed
+        id: sync_commit
+        run: |
+          if git diff --quiet -- EasyISP.version README.md; then
+            echo "No sync changes detected."
+            echo "committed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add EasyISP.version README.md
+          git commit -m "chore: sync version files for $TAG"
+          git push origin HEAD:main
+          echo "committed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Re-check overlap before packaging
+        id: overlap_guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists after precheck; skipping release steps."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "reason=tag_exists" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists after precheck; skipping release steps."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "reason=release_exists" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+          echo "reason=ready" >> "$GITHUB_OUTPUT"
 
       - name: Package manifest files
+        if: steps.overlap_guard.outputs.proceed == 'true'
         run: |
-          # Build the canonical ZIP from the manifest to ensure GameData/EasyISP layout.
-          bash .github/scripts/package.sh --version "${{ steps.version.outputs.VERSION }}"
+          bash .github/scripts/package.sh --version "$VERSION"
 
       - name: Create and push tag
-        if: steps.tag_check.outputs.tag_exists != 'true'
+        if: steps.overlap_guard.outputs.proceed == 'true'
         run: |
-          # Create a lightweight tag locally so it does not require git user identity on CI.
-          tag="${{ steps.version.outputs.TAG }}"
-          # Ensure the tag is created only once on the release automation path.
-          git tag "$tag"
-          # Push the tag before creating the GitHub release to avoid untagged URLs.
-          git push origin "$tag"
+          git tag "$TAG"
+          git push origin "$TAG"
 
-      - name: Create GitHub release
-        if: steps.tag_check.outputs.tag_exists != 'true'
+      - name: Create draft GitHub release
+        if: steps.overlap_guard.outputs.proceed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Create the release for the already-pushed tag so the URL resolves to the tag.
-          tag="${{ steps.version.outputs.TAG }}"
-          # Normalize the release mode to draft by default to match existing automation behavior.
-          mode="${RELEASE_MODE:-draft}"
-          # Validate the release mode so automation fails fast on unexpected values.
-          if [[ "$mode" != "draft" && "$mode" != "publish" ]]; then
-            echo "Invalid RELEASE_MODE '$mode'; allowed values are 'draft' or 'publish'" >&2
-            exit 1
-          fi
-          # Always create the release as a draft initially to keep downstream ordering predictable.
-          echo "Creating draft release for $tag (mode=$mode)"
-          gh release create "$tag" --generate-notes --draft
+          gh release create "$TAG" --generate-notes --draft
 
       - name: Upload zip to release
+        if: steps.overlap_guard.outputs.proceed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Upload the asset to the release without overwriting existing files.
-          tag="${{ steps.version.outputs.TAG }}"
-          asset="EasyISP-v${{ steps.version.outputs.VERSION }}.zip"
+          asset="EasyISP-v${VERSION}.zip"
           asset_path="$GITHUB_WORKSPACE/$asset"
           if [[ ! -f "$asset_path" ]]; then
             echo "Expected artifact $asset_path not found" >&2
             exit 1
           fi
-          gh release upload "$tag" "$asset_path"
+          gh release upload "$TAG" "$asset_path"
 
       - name: Publish GitHub release
-        if: env.RELEASE_MODE == 'publish'
+        if: steps.overlap_guard.outputs.proceed == 'true' && env.RELEASE_MODE == 'publish'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tag="${{ steps.version.outputs.TAG }}"
-          echo "Publishing release $tag now that assets are uploaded"
-          gh release edit "$tag" --draft=false
+          gh release edit "$TAG" --draft=false
 
-      - name: Confirm upload
+      - name: Keep release in draft mode
+        if: steps.overlap_guard.outputs.proceed == 'true' && env.RELEASE_MODE != 'publish'
         run: |
-          # Confirm the asset name and tag for release logs.
-          echo "Uploaded EasyISP-v${{ steps.version.outputs.VERSION }}.zip to release ${{ steps.version.outputs.TAG }}"
+          echo "RELEASE_MODE=draft; release $TAG remains draft."
+
+      - name: Confirm release upload
+        if: steps.overlap_guard.outputs.proceed == 'true'
+        run: |
+          echo "Uploaded EasyISP-v${VERSION}.zip to release $TAG (mode=$RELEASE_MODE)"
+
+      - name: Report overlap skip after precheck
+        if: steps.overlap_guard.outputs.proceed != 'true'
+        env:
+          REASON: ${{ steps.overlap_guard.outputs.reason }}
+        run: |
+          echo "Skipped release steps after overlap re-check ($REASON)."

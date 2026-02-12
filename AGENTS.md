@@ -29,18 +29,20 @@ EasyISP is intended to be a global ISP multiplier. It MUST run in the ModuleMana
 
 ### versioning Rules
 
-All required files MUST be updated on every version change. The version MUST match across `EasyISP.version`, the Git tag, and the GitHub Release.
+`VERSION` (repo root) is authoritative for releases and MUST contain `vX.Y.Z`. Release automation and `scripts/sync-version.sh` keep `EasyISP.version` and `README.md` in sync with `VERSION`.
 
 #### Required version format
 
-- Release version format: `X.Y.Z`.
+- Authoritative version format: `vX.Y.Z` in `VERSION`.
+- Release version format in `EasyISP.version`: `X.Y.Z`.
 - Release tag format: `vX.Y.Z`.
-- All locations that store a version MUST use these formats.
+- Draft/publish behavior is controlled by `vars.RELEASE_MODE`.
 
 #### File list
 
 Files required to be updated when updating version
 
-- `EasyISP.version` — Update: `VERSION` (MAJOR/MINOR/PATCH) to `X.Y.Z`.
-- `EasyISP.version` — Update: `DOWNLOAD` to `https://github.com/Tempus-superest/EasyISP/releases/tag/vX.Y.Z`.
-- `README.md` — Update: `Current Version` link text to `vX.Y.Z`.
+- `VERSION` — Authoritative tag-form version `vX.Y.Z`.
+- `EasyISP.version` — Synced: `VERSION` (MAJOR/MINOR/PATCH) to `X.Y.Z`.
+- `EasyISP.version` — Synced: `DOWNLOAD` to `https://github.com/Tempus-superest/EasyISP/releases/tag/vX.Y.Z`.
+- `README.md` — Synced: `Current Version` link text/URL to `vX.Y.Z`.
