@@ -1,4 +1,4 @@
-# EasyISP - A Mod for Kerbal Space Program Users
+# EasyISP - A Mod for Kerbal Space Program User
 
 Current Version - [v1.3.0](https://github.com/Tempus-superest/EasyISP/releases/tag/v1.3.0)
 
