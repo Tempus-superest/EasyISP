@@ -25,10 +25,62 @@ permissions:
   issues: read
 
 jobs:
+  rerun-codex-gate:
+    name: rerun-codex-gate
+    if: github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.login == 'chatgpt-codex-connector[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Re-run PR-targeted Codex gate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pullNumber = context.issue.number;
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRunsForWorkflow,
+              {
+                owner,
+                repo,
+                workflow_id: "codex-gate.yml",
+                event: "pull_request_target",
+                per_page: 100
+              }
+            );
+
+            const targetRun = runs.find(
+              (run) =>
+                run.status === "completed" &&
+                (run.pull_requests ?? []).some((pr) => pr.number === pullNumber)
+            );
+
+            if (!targetRun) {
+              core.info(
+                `No completed pull_request_target run found for PR #${pullNumber}; nothing to rerun.`
+              );
+              return;
+            }
+
+            await github.rest.actions.reRunWorkflow({
+              owner,
+              repo,
+              run_id: targetRun.id
+            });
+
+            core.info(
+              `Requested rerun of pull_request_target gate run ${targetRun.id} for PR #${pullNumber}.`
+            );
+
   codex-review-fresh:
     name: codex-review-fresh
-    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    if: github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      issues: read
     steps:
       - name: Evaluate Codex review gate
         uses: actions/github-script@v7
@@ -137,7 +189,74 @@ jobs:
                 review.user?.login === codexLogin && review.commit_id === headSha
             );
 
+            let hasCodexSummaryCommentForHead = false;
+
             if (!hasCodexReviewForHead) {
+              let headIntroducedAt = pr.created_at ?? null;
+
+              try {
+                const timelineEvents = await github.paginate(
+                  github.rest.issues.listEventsForTimeline,
+                  {
+                    owner,
+                    repo,
+                    issue_number: pull_number,
+                    per_page: 100
+                  }
+                );
+
+                const headEvents = timelineEvents.filter(
+                  (event) =>
+                    event?.event === "committed" &&
+                    event?.commit_id === headSha &&
+                    typeof event?.created_at === "string"
+                );
+
+                headEvents.sort(
+                  (a, b) => new Date(b.created_at) - new Date(a.created_at)
+                );
+
+                if (headEvents[0]?.created_at) {
+                  headIntroducedAt = headEvents[0].created_at;
+                }
+              } catch (error) {
+                core.info(
+                  `Timeline lookup failed; falling back to PR created_at for Codex comment freshness: ${error.message}`
+                );
+              }
+
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: pull_number,
+                per_page: 100
+              });
+
+              hasCodexSummaryCommentForHead = comments.some((comment) => {
+                if (comment.user?.login !== codexLogin) {
+                  return false;
+                }
+
+                if (typeof comment.body !== "string") {
+                  return false;
+                }
+
+                if (!/^\s*Codex Review:/i.test(comment.body)) {
+                  return false;
+                }
+
+                if (!headIntroducedAt) {
+                  return true;
+                }
+
+                return (
+                  new Date(comment.created_at).getTime() >=
+                  new Date(headIntroducedAt).getTime()
+                );
+              });
+            }
+
+            if (!hasCodexReviewForHead && !hasCodexSummaryCommentForHead) {
               core.setFailed(
                 "Codex review missing for current HEAD. Comment '@codex review' to generate one."
               );
@@ -145,5 +264,5 @@ jobs:
             }
 
             core.info(
-              "Codex review gate passed: current HEAD has a Codex review."
+              "Codex review gate passed: current HEAD has Codex approval evidence (review or summary comment)."
             );
