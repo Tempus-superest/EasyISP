@@ -1,0 +1,173 @@
+name: Codex Review Gate
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+      - synchronize
+  pull_request_review:
+    types:
+      - submitted
+      - edited
+      - dismissed
+
+permissions:
+  pull-requests: read
+  issues: read
+
+jobs:
+  codex-review-fresh:
+    name: codex-review-fresh
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate Codex review gate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const codexLogin = "chatgpt-codex-connector[bot]";
+
+            function parsePullNumberFromUrl(url) {
+              if (typeof url !== "string") {
+                return null;
+              }
+
+              const parts = url.split("/").filter(Boolean);
+              const candidate = parts[parts.length - 1];
+              const parsed = Number(candidate);
+              return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+            }
+
+            let pr = context.payload.pull_request ?? null;
+
+            if (!pr) {
+              const pullNumber =
+                context.payload.pull_request?.number ??
+                parsePullNumberFromUrl(context.payload.review?.pull_request_url) ??
+                context.issue.number;
+
+              if (!pullNumber) {
+                core.setFailed("Unable to determine pull request number for Codex review gate.");
+                return;
+              }
+
+              try {
+                const response = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: pullNumber
+                });
+                pr = response.data;
+              } catch (error) {
+                core.setFailed(
+                  `Failed to fetch pull request #${pullNumber}: ${error.message}`
+                );
+                return;
+              }
+            }
+
+            if (!pr?.number || !pr?.head?.sha) {
+              core.setFailed("Unable to resolve pull request number and current HEAD SHA.");
+              return;
+            }
+
+            const pull_number = pr.number;
+            const headSha = pr.head.sha;
+
+            core.info(`Evaluating Codex gate for PR #${pull_number} at HEAD ${headSha}.`);
+
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner,
+              repo,
+              pull_number,
+              per_page: 100
+            });
+
+            const hasCodexReviewForHead = reviews.some(
+              (review) =>
+                review.user?.login === codexLogin && review.commit_id === headSha
+            );
+
+            if (!hasCodexReviewForHead) {
+              core.setFailed(
+                "Codex review missing for current HEAD. Comment '@codex review' to generate one."
+              );
+              return;
+            }
+
+            const unresolvedCodexThreads = [];
+            let hasNextPage = true;
+            let after = null;
+
+            while (hasNextPage) {
+              const result = await github.graphql(
+                `
+                  query CodexThreads(
+                    $owner: String!
+                    $repo: String!
+                    $pullNumber: Int!
+                    $after: String
+                  ) {
+                    repository(owner: $owner, name: $repo) {
+                      pullRequest(number: $pullNumber) {
+                        reviewThreads(first: 100, after: $after) {
+                          nodes {
+                            isResolved
+                            comments(first: 100) {
+                              nodes {
+                                author {
+                                  login
+                                }
+                              }
+                            }
+                          }
+                          pageInfo {
+                            hasNextPage
+                            endCursor
+                          }
+                        }
+                      }
+                    }
+                  }
+                `,
+                {
+                  owner,
+                  repo,
+                  pullNumber: pull_number,
+                  after
+                }
+              );
+
+              const threads =
+                result?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+              const pageInfo =
+                result?.repository?.pullRequest?.reviewThreads?.pageInfo ?? null;
+
+              for (const thread of threads) {
+                const comments = thread?.comments?.nodes ?? [];
+                const isCodexOwned = comments.some(
+                  (comment) => comment?.author?.login === codexLogin
+                );
+
+                if (isCodexOwned && thread?.isResolved === false) {
+                  unresolvedCodexThreads.push(thread);
+                }
+              }
+
+              hasNextPage = Boolean(pageInfo?.hasNextPage);
+              after = pageInfo?.endCursor ?? null;
+            }
+
+            if (unresolvedCodexThreads.length > 0) {
+              core.setFailed(
+                "Unresolved Codex review threads remain. Resolve all Codex conversations to pass."
+              );
+              return;
+            }
+
+            core.info(
+              "Codex review gate passed: current HEAD has a Codex review and no unresolved Codex-owned threads."
+            );

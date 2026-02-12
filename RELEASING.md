@@ -9,6 +9,12 @@ EasyISP release automation uses two workflows:
 
 `VERSION` is authoritative. All release metadata is derived from it.
 
+## PR Review Gate
+
+Codex review is not auto-requested. Maintainers must comment `@codex review` on each PR.
+
+The `Codex Review Gate` check stays failing until Codex has reviewed the PR's latest HEAD commit and all Codex review conversations are resolved.
+
 ## Source of Truth
 
 - `VERSION` contains exactly `vX.Y.Z`.
