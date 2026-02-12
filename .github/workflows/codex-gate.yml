@@ -53,6 +53,19 @@ jobs:
               const owner = context.repo.owner;
               const repo = context.repo.repo;
               const pullNumber = context.payload.issue.number;
+              const prResponse = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: pullNumber
+              });
+              const headSha = prResponse.data?.head?.sha;
+
+              if (!headSha) {
+                core.info(
+                  `Unable to resolve HEAD SHA for PR #${pullNumber}; cannot rerun gate.`
+                );
+                return;
+              }
 
               const runs = await github.paginate(
                 github.rest.actions.listWorkflowRunsForWorkflow,
@@ -61,25 +74,19 @@ jobs:
                   repo,
                   workflow_id: "codex-gate.yml",
                   event: "pull_request_target",
+                  head_sha: headSha,
                   per_page: 100
                 }
               );
 
               const targetRun = runs.find(
                 (run) =>
-                  (run.pull_requests ?? []).some((pr) => pr.number === pullNumber)
+                  run.status === "completed"
               );
 
               if (!targetRun) {
                 core.info(
-                  `No pull_request_target gate run found for PR #${pullNumber}; nothing to rerun.`
-                );
-                return;
-              }
-
-              if (targetRun.status !== "completed") {
-                core.info(
-                  `Latest pull_request_target gate run ${targetRun.id} is still ${targetRun.status}; skipping rerun.`
+                  `No completed pull_request_target gate run found for PR #${pullNumber} at HEAD ${headSha}; nothing to rerun.`
                 );
                 return;
               }
@@ -200,7 +207,7 @@ jobs:
             let hasCodexSummaryCommentForHead = false;
 
             if (!hasCodexReviewForHead) {
-              let headIntroducedAt = pr.created_at ?? null;
+              let headIntroducedAt = null;
 
               try {
                 const timelineEvents = await github.paginate(
@@ -229,7 +236,41 @@ jobs:
                 }
               } catch (error) {
                 core.info(
-                  `Timeline lookup failed; falling back to PR created_at for Codex comment freshness: ${error.message}`
+                  `Timeline lookup failed for current HEAD commit event: ${error.message}`
+                );
+              }
+
+              if (!headIntroducedAt) {
+                try {
+                  const headRuns = await github.paginate(
+                    github.rest.actions.listWorkflowRunsForWorkflow,
+                    {
+                      owner,
+                      repo,
+                      workflow_id: "codex-gate.yml",
+                      event: "pull_request_target",
+                      head_sha: headSha,
+                      per_page: 100
+                    }
+                  );
+
+                  const sortedHeadRuns = [...headRuns].sort(
+                    (a, b) => new Date(a.created_at) - new Date(b.created_at)
+                  );
+
+                  if (sortedHeadRuns[0]?.created_at) {
+                    headIntroducedAt = sortedHeadRuns[0].created_at;
+                  }
+                } catch (error) {
+                  core.info(
+                    `Workflow-run fallback failed for current HEAD timing: ${error.message}`
+                  );
+                }
+              }
+
+              if (!headIntroducedAt) {
+                core.info(
+                  "Unable to determine when current HEAD became active; summary-comment fallback will not be accepted."
                 );
               }
 
@@ -254,7 +295,7 @@ jobs:
                 }
 
                 if (!headIntroducedAt) {
-                  return true;
+                  return false;
                 }
 
                 return (
