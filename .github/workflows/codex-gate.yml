@@ -7,11 +7,19 @@ on:
       - reopened
       - ready_for_review
       - synchronize
+  pull_request_review_thread:
+    types:
+      - resolved
+      - unresolved
   pull_request_review:
     types:
       - submitted
       - edited
       - dismissed
+
+concurrency:
+  group: codex-gate-${{ github.repository }}-${{ github.event.pull_request.number || github.event.pull_request_review.pull_request.number || github.event.pull_request_review_thread.pull_request.number || github.event.review.pull_request_url || github.run_id }}
+  cancel-in-progress: true
 
 permissions:
   pull-requests: read
@@ -26,55 +34,93 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
             const codexLogin = "chatgpt-codex-connector[bot]";
 
-            function parsePullNumberFromUrl(url) {
+            function parsePullRequestUrl(url) {
               if (typeof url !== "string") {
                 return null;
               }
 
-              const parts = url.split("/").filter(Boolean);
-              const candidate = parts[parts.length - 1];
-              const parsed = Number(candidate);
-              return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-            }
-
-            let pr = context.payload.pull_request ?? null;
-
-            if (!pr) {
-              const pullNumber =
-                context.payload.pull_request?.number ??
-                parsePullNumberFromUrl(context.payload.review?.pull_request_url) ??
-                context.issue.number;
-
-              if (!pullNumber) {
-                core.setFailed("Unable to determine pull request number for Codex review gate.");
-                return;
-              }
-
               try {
-                const response = await github.rest.pulls.get({
-                  owner,
-                  repo,
-                  pull_number: pullNumber
-                });
-                pr = response.data;
-              } catch (error) {
-                core.setFailed(
-                  `Failed to fetch pull request #${pullNumber}: ${error.message}`
-                );
-                return;
+                const parsed = new URL(url);
+                const parts = parsed.pathname.split("/").filter(Boolean);
+                if (parts.length < 5) {
+                  return null;
+                }
+
+                if (parts[0] !== "repos" || parts[3] !== "pulls") {
+                  return null;
+                }
+
+                const number = Number(parts[4]);
+                if (!Number.isInteger(number) || number <= 0) {
+                  return null;
+                }
+
+                return {
+                  owner: parts[1],
+                  repo: parts[2],
+                  number
+                };
+              } catch {
+                return null;
               }
             }
 
-            if (!pr?.number || !pr?.head?.sha) {
+            let pull_number = context.payload.pull_request?.number ?? null;
+            let apiOwner = context.repo.owner;
+            let apiRepo = context.repo.repo;
+
+            const parsedReviewPull = parsePullRequestUrl(
+              context.payload.review?.pull_request_url
+            );
+
+            if (parsedReviewPull) {
+              apiOwner = parsedReviewPull.owner;
+              apiRepo = parsedReviewPull.repo;
+              if (!pull_number) {
+                pull_number = parsedReviewPull.number;
+              }
+            }
+
+            if (!pull_number && context.issue?.number) {
+              pull_number = context.issue.number;
+            }
+
+            if (!pull_number) {
+              core.setFailed("Unable to determine pull request number for Codex review gate.");
+              return;
+            }
+
+            let pr = null;
+
+            try {
+              const response = await github.rest.pulls.get({
+                owner: apiOwner,
+                repo: apiRepo,
+                pull_number
+              });
+              pr = response.data;
+            } catch (error) {
+              core.setFailed(
+                `Failed to fetch pull request #${pull_number}: ${error.message}`
+              );
+              return;
+            }
+
+            if (
+              !pr?.number ||
+              !pr?.head?.sha ||
+              !pr?.base?.repo?.owner?.login ||
+              !pr?.base?.repo?.name
+            ) {
               core.setFailed("Unable to resolve pull request number and current HEAD SHA.");
               return;
             }
 
-            const pull_number = pr.number;
+            const owner = pr.base.repo.owner.login;
+            const repo = pr.base.repo.name;
+            pull_number = pr.number;
             const headSha = pr.head.sha;
 
             core.info(`Evaluating Codex gate for PR #${pull_number} at HEAD ${headSha}.`);
